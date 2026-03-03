@@ -15,6 +15,7 @@ import type { ServerContext } from "./config/context.js";
 
 import { logging } from "./middleware/logging.js";
 import { cacheConfigSetter, cacheControlHeaders } from "./middleware/cache.js";
+import { apiSignatureGuard } from "./middleware/apiSignature.js";
 
 // Import routes
 import { hianimeRouter } from "./routes/hianime/index.js";
@@ -30,6 +31,7 @@ import { toonStreamRouter } from "./routes/toonstream/index.js";
 import { hindiApiRouter } from "./routes/hindiapi/index.js";
 import { anilistHindiRouter } from "./routes/anilisthindi/index.js";
 import { toonWorldRouter } from "./routes/toonworld/index.js";
+import { webhookRouter } from "./routes/webhooks/index.js";
 import pkgJson from "../package.json" with { type: "json" };
 
 // API version
@@ -41,6 +43,9 @@ const app = new Hono<ServerContext>();
 app.use(logging);
 app.use(corsConfig);
 app.use(cacheControlHeaders);
+
+// API signature verification (enabled when API_SECRET is set)
+app.use(apiSignatureGuard);
 
 // Rate limiting (enabled when API_HOSTNAME is set)
 const isPersonalDeployment = Boolean(env.API_HOSTNAME);
@@ -631,6 +636,7 @@ app.route(`${BASE_PATH}/toonstream`, toonStreamRouter);
 app.route(`${BASE_PATH}/hindiapi`, hindiApiRouter);
 app.route(`${BASE_PATH}/anilisthindi`, anilistHindiRouter);
 app.route(`${BASE_PATH}/toonworld`, toonWorldRouter);
+app.route(`${BASE_PATH}/webhooks`, webhookRouter);
 
 // ========== ERROR HANDLING ==========
 app.notFound(notFoundHandler);

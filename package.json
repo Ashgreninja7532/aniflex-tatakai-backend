@@ -1,6 +1,6 @@
 {
     "name": "tatakai-api",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "description": "Unified anime API combining HiAnime, Consumet, and regional scrapers with modern caching, CORS, rate limiting, and logging",
     "main": "dist/src/server.js",
     "type": "module",

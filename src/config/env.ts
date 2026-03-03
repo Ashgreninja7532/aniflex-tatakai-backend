@@ -57,6 +57,15 @@ export const env = cleanEnv(process.env, {
     TMDB_KEY: str({ default: "", desc: "TMDB API key" }),
     SUPABASE_URL: str({ default: "", desc: "Supabase Edge Function URL for WatchAnimeWorld scraper" }),
     SUPABASE_AUTH_KEY: str({ default: "", desc: "Supabase authentication key" }),
+
+    // API Encryption / Signature
+    API_SECRET: str({ default: "", desc: "Shared secret for request signing (leave empty to disable)" }),
+
+    // Discord Webhooks
+    DISCORD_WEBHOOK_USER_CREATED: str({ default: "", desc: "Discord webhook for new user notifications" }),
+    DISCORD_WEBHOOK_ERROR_LOGS: str({ default: "", desc: "Discord webhook for error log notifications" }),
+    DISCORD_WEBHOOK_COMMENT: str({ default: "", desc: "Discord webhook for comment notifications" }),
+    DISCORD_WEBHOOK_REVIEW_POPUP: str({ default: "", desc: "Discord webhook for review popup submissions" }),
 });
 
 // Convenience flags
