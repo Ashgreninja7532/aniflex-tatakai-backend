@@ -3,7 +3,7 @@ name: Wake Up Render API
 on:
   schedule:
     # This runs every 14 minutes (Render sleeps at 15m)
-    - cron: '*/12 * * * *'
+    - cron: '*/14 * * * *'
   workflow_dispatch: # Allows you to run it manually for testing
 
 jobs:
