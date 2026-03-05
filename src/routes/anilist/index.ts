@@ -82,6 +82,12 @@ query ($id: Int, $page: Int, $perPage: Int, $search: String) {
 }
 `;
 
+const headers = {
+  'Content-Type': 'application/json',
+  'Accept': 'application/json',
+  'User-Agent': 'Tatakai-API-Client/1.0' // AniList prefers identified traffic
+};
+
 anilistRouter.get('/search', async (c) => {
   const query = c.req.query('q');
   if (!query) return c.json({ error: "Query 'q' is required" }, 400);
