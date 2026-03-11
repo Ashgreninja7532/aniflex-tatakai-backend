@@ -200,7 +200,7 @@ hianimeRouter.get("/episode/servers", async (c) => {
 
     const data = await cache.getOrSet<HiAnime.ScrapedEpisodeServers>(
         async () => hianime.getEpisodeServers(animeEpisodeId),
-        cacheConfig.key,
+        `${cacheConfig.key}_${animeEpisodeId}`, 
         cacheConfig.duration
     );
 
@@ -224,7 +224,7 @@ hianimeRouter.get("/episode/sources", async (c) => {
     try {
         const data = await cache.getOrSet<HiAnime.ScrapedAnimeEpisodesSources>(
             async () => hianime.getEpisodeSources(animeEpisodeId, server, category),
-            cacheConfig.key,
+            `${cacheConfig.key}_${animeEpisodeId}_${server}_${category}`,
             cacheConfig.duration
         );
         return c.json({ provider: "Tatakai", status: 200, data }, { status: 200 });
@@ -241,7 +241,7 @@ hianimeRouter.get("/anime/:animeId/episodes", async (c) => {
 
     const data = await cache.getOrSet<HiAnime.ScrapedAnimeEpisodes>(
         async () => hianime.getEpisodes(animeId),
-        cacheConfig.key,
+        `${cacheConfig.key}_${animeId}`, 
         cacheConfig.duration
     );
 
