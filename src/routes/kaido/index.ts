@@ -4,7 +4,7 @@ import { ANIME } from "@consumet/extensions";
 const kaidoRouter = new Hono();
 
 // 🛠️ THE MAGIC: We use the Zoro engine, but override the URL to Kaido!
-const kaido = new ANIME.Zoro("https://kaido.to");
+const kaido = new ANIME.Hianime("https://kaido.to");
 
 // ==========================================
 // 1. SEARCH ENDPOINT
