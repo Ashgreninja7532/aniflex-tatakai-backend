@@ -101,8 +101,14 @@ animepaheRouter.get("/episode/sources", async (c) => {
                 outro: null
             }
         }, 200);
-    } catch (error) {
-        return c.json({ error: "Failed to decrypt sources" }, 500);
+   } catch (error: any) {
+        // This will print the EXACT error from Consumet to your browser screen
+        console.error(error);
+        return c.json({ 
+            error: "Failed to decrypt sources",
+            exact_reason: error.message,
+            stack: error.stack
+        }, 500);
     }
 });
 
