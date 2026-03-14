@@ -35,11 +35,12 @@ export class KaidoScraper {
     }
 
     // 2. EPISODES
+ // 2. EPISODES
     async getEpisodes(animeId: string) {
         const res = { episodes: [] as any[] };
         try {
-            const internalId = animeId.split("-").pop();
-            const { data } = await this.client.get(`${AJAX_URL}/v2/episode/list/${internalId}`, {
+            // 🛠️ FIX: The AJAX URL now requires the full text ID, not the internal number ID
+            const { data } = await this.client.get(`${AJAX_URL}/episode/list/${animeId}`, {
                 headers: { "X-Requested-With": "XMLHttpRequest", Referer: `${BASE_URL}/watch/${animeId}` }
             });
             const $ = cheerio.load(data.html);
