@@ -1,86 +1,97 @@
 import { Hono } from "hono";
-import * as cheerio from "cheerio";
+import { KaidoScraper } from "../../engine/kaido.engine.js";
 
 const kaidoRouter = new Hono();
-const BASE_URL = "https://kaido.to";
-const AJAX_URL = "https://kaido.to/ajax";
 
-// 🛠️ OUR DISGUISE: Bypasses basic Cloudflare bot protection
-const HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5",
-    "Referer": BASE_URL,
-};
+// Initialize our brand new custom scraper!
+const kaido = new KaidoScraper();
 
 // ==========================================
-// 1. CUSTOM SEARCH SCRAPER
+// 1. SEARCH ENDPOINT
 // ==========================================
 kaidoRouter.get("/search", async (c) => {
     const query = c.req.query("q") || "";
     try {
-        const response = await fetch(`${BASE_URL}/search?keyword=${encodeURIComponent(query)}`, { headers: HEADERS });
-        const html = await response.text();
-        const $ = cheerio.load(html);
-
-        const animes: any[] = [];
-
-        // Loop through every anime card on the search page
-        $('.flw-item').each((i, el) => {
-            const rawLink = $(el).find('.film-name a').attr('href') || "";
-            // Extract the ID from the link (e.g., /watch/naruto-123 -> naruto-123)
-            const id = rawLink.split('/watch/')[1]?.split('?')[0] || ""; 
-            
-            const title = $(el).find('.film-name a').text().trim();
-            const image = $(el).find('.film-poster-img').attr('data-src') || "";
-            const type = $(el).find('.fdi-item').first().text().trim() || "TV";
-
-            if (id && title) {
-                animes.push({ id, title, name: title, image, type });
-            }
-        });
-
-        return c.json({ provider: "Tatakai-Custom", status: 200, data: { animes } });
+        const res: any = await kaido.search(query);
+        // Map to match Flutter app expectations
+        const formattedAnimes = res.animes.map((item: any) => ({
+            id: item.id, 
+            name: item.name,
+            title: item.name, // Flutter needs 'title'
+            image: item.poster,
+            type: item.type || "TV"
+        }));
+        return c.json({ data: { animes: formattedAnimes } }, 200);
     } catch (error) {
-        console.error("Search Scraper Error:", error);
-        return c.json({ provider: "Tatakai-Custom", status: 500, error: "Failed to scrape search" }, 500);
+        return c.json({ data: { animes: [] } }, 200);
     }
 });
 
 // ==========================================
-// 2. CUSTOM EPISODE LIST SCRAPER
+// 2. EPISODES LIST ENDPOINT
 // ==========================================
 kaidoRouter.get("/anime/:animeId/episodes", async (c) => {
     const animeId = decodeURIComponent(c.req.param("animeId"));
     try {
-        // Kaido hides episodes in an AJAX call that returns an HTML snippet
-        const response = await fetch(`${AJAX_URL}/episode/list/${animeId}`, { headers: HEADERS });
-        const json: any = await response.json();
-        
-        const $ = cheerio.load(json.html);
-        const episodes: any[] = [];
-
-        // Loop through the hidden episode list
-        $('.ep-item').each((i, el) => {
-            const episodeId = $(el).attr('data-id'); // The secret internal ID
-            const number = $(el).attr('data-number');
-            const title = $(el).attr('title') || `Episode ${number}`;
-            const isFiller = $(el).hasClass('ssl-item-filler'); // Kaido marks fillers with this class!
-
-            if (episodeId && number) {
-                episodes.push({
-                    episodeId,
-                    number: parseInt(number),
-                    title,
-                    isFiller
-                });
-            }
-        });
-
-        return c.json({ provider: "Tatakai-Custom", status: 200, data: { episodes } });
+        const res: any = await kaido.getEpisodes(animeId);
+        // The engine's output is already almost perfect!
+        return c.json({ data: { episodes: res.episodes } }, 200);
     } catch (error) {
-        console.error("Episode Scraper Error:", error);
-        return c.json({ provider: "Tatakai-Custom", status: 500, error: "Failed to scrape episodes" }, 500);
+        return c.json({ error: "Failed to fetch episodes" }, 500);
+    }
+});
+
+// ==========================================
+// 3. SERVERS ENDPOINT
+// ==========================================
+kaidoRouter.get("/episode/servers", async (c) => {
+    const episodeId = decodeURIComponent(c.req.query("animeEpisodeId") || "");
+    try {
+        const res: any = await kaido.getEpisodeServers(episodeId);
+        // Perfectly map the sub/dub servers
+        return c.json({ data: { sub: res.sub, dub: res.dub } }, 200);
+    } catch (error) {
+        // Fallback if the scrape fails
+        return c.json({
+            data: {
+                sub: [{ serverName: "vidstreaming", serverId: 4 }, { serverName: "megacloud", serverId: 1 }],
+                dub: [{ serverName: "vidstreaming", serverId: 4 }, { serverName: "megacloud", serverId: 1 }]
+            }
+        }, 200);
+    }
+});
+
+// ==========================================
+// 4. SOURCES ENDPOINT (The Final Boss)
+// ==========================================
+kaidoRouter.get("/episode/sources", async (c) => {
+    const episodeId = decodeURIComponent(c.req.query("animeEpisodeId") || "");
+    const server = decodeURIComponent(c.req.query("server") || "vidstreaming");
+    const category = decodeURIComponent(c.req.query("category") || "sub");
+
+    try {
+        const res: any = await kaido.getEpisodeSources(episodeId, server, category);
+        
+        // Reformat Subtitles
+        const formattedTracks = res.tracks?.map((sub: any) => ({
+            file: sub.url,
+            url: sub.url,
+            label: sub.lang,
+            kind: "captions"
+        })) || [];
+
+        return c.json({
+            data: {
+                sources: res.sources,
+                tracks: formattedTracks,
+                intro: res.intro,
+                outro: res.outro,
+                headers: res.headers || { "Referer": "https://kaido.to/" }
+            }
+        }, 200);
+    } catch (error: any) {
+        console.error("Sources Error:", error);
+        return c.json({ error: "Failed to fetch sources", exact_reason: error.message }, 500);
     }
 });
 
