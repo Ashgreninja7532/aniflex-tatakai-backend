@@ -142,3 +142,4 @@ export class KaidoScraper {
 
         } catch (err) { throw new Error(`Decryption failed: ${err}`); }
     }
+}
