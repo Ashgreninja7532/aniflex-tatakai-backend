@@ -31,7 +31,6 @@
     "author": "",
     "license": "MIT",
     "dependencies": {
-        "@consumet/extensions": "github:consumet/consumet.ts",
         "@hono/node-server": "^1.19.11",
         "aniwatch": "^2.24.3",
         "cheerio": "^1.2.0",
