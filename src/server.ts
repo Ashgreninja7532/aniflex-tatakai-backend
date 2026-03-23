@@ -34,7 +34,6 @@ import { toonWorldRouter } from "./routes/toonworld/index.js";
 import { webhookRouter } from "./routes/webhooks/index.js";
 import pkgJson from "../package.json" with { type: "json" };
 import { anilistRouter } from "./routes/anilist/index.js";
-import { animepaheRouter } from "./routes/animepahe/index.js";
 import { kaidoRouter } from "./routes/kaido/index.js"; 
 
 // API version
@@ -609,7 +608,6 @@ app.get("/", (c) =>
             hianime: `${BASE_PATH}/hianime`,
             consumet: `${BASE_PATH}/consumet`,
             anilist: `${BASE_PATH}/anilist`,
-            animepahe: `${BASE_PATH}/animepahe`,
             kaido: `${BASE_PATH}/kaido`,
             regional: {
                 hindiDubbed: `${BASE_PATH}/hindidubbed`,
@@ -644,7 +642,6 @@ app.route(`${BASE_PATH}/anilisthindi`, anilistHindiRouter);
 app.route(`${BASE_PATH}/toonworld`, toonWorldRouter);
 app.route(`${BASE_PATH}/webhooks`, webhookRouter);
 app.route(`${BASE_PATH}/anilist`, anilistRouter);
-app.route(`${BASE_PATH}/animepahe`, animepaheRouter);
 app.route(`${BASE_PATH}/kaido`, kaidoRouter);
 
 
