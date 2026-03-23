@@ -4,7 +4,7 @@ import path from "path";
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
-
+import { handle } from '@hono/node-server/vercel';
 import { log } from "./config/logger.js";
 import { corsConfig } from "./config/cors.js";
 import { ratelimit } from "./config/ratelimit.js";
@@ -652,67 +652,5 @@ app.route(`${BASE_PATH}/kaido`, kaidoRouter);
 app.notFound(notFoundHandler);
 app.onError(errorHandler);
 
-// ========== SERVER STARTUP ==========
-(function () {
-    // Skip server start for serverless environments
-    if (SERVERLESS_ENVIRONMENTS.includes(env.DEPLOYMENT_ENV as typeof SERVERLESS_ENVIRONMENTS[number])) {
-        return;
-    }
-
-    const serverPort = env.PORT;
-    const serverInstance = serve({
-        port: serverPort,
-        fetch: app.fetch,
-    }).addListener("listening", () => {
-        log.info(`🎌 Tatakai API running at http://localhost:${serverPort}`);
-        log.info(`📚 API Base Path: ${BASE_PATH}`);
-        log.info(`🔧 Environment: ${env.NODE_ENV}`);
-        log.info(`💾 Cache TTL: ${env.CACHE_TTL_SECONDS}s`);
-
-        if (env.REDIS_URL) {
-            log.info("📡 Redis: Connected");
-        } else {
-            log.info("📡 Cache: In-memory (LRU)");
-        }
-
-        if (isPersonalDeployment) {
-            log.info(`🚦 Rate Limiting: ${env.RATE_LIMIT_MAX_REQUESTS} req/${env.RATE_LIMIT_WINDOW_MS / 1000}s`);
-        }
-    });
-
-    // Graceful shutdown handlers
-    process.on("SIGINT", () => execGracefulShutdown(serverInstance));
-    process.on("SIGTERM", () => execGracefulShutdown(serverInstance));
-    process.on("uncaughtException", (err) => {
-        log.error(`Uncaught Exception: ${err.message}`);
-        execGracefulShutdown(serverInstance);
-    });
-    process.on("unhandledRejection", (reason, promise) => {
-        log.error(
-            `Unhandled Rejection at: ${promise}, reason: ${reason instanceof Error ? reason.message : reason}`
-        );
-        execGracefulShutdown(serverInstance);
-    });
-
-    // Health check for Render free tier (prevents sleep)
-    if (
-        isPersonalDeployment &&
-        env.DEPLOYMENT_ENV === DeploymentEnv.RENDER
-    ) {
-        const INTERVAL_DELAY = 8 * 60 * 1000; // 8 minutes
-        const url = new URL(`https://${env.API_HOSTNAME}/health`);
-
-        setInterval(() => {
-            https
-                .get(url.href)
-                .on("response", () => {
-                    log.info(`Health check at ${new Date().toISOString()}`);
-                })
-                .on("error", (err) =>
-                    log.warn(`Health check failed: ${err.message.trim()}`)
-                );
-        }, INTERVAL_DELAY);
-    }
-})();
-
-export default app;
+// ========== VERCEL EXPORT ==========
+export default handle(app);
