@@ -77,4 +77,36 @@ kaidoRouter.get("/episode/sources", async (c) => {
     }
 });
 
+// 5. HOME PAGE ENDPOINT
+kaidoRouter.get("/home", async (c) => {
+    try {
+        const res = await kaido.getHomePage();
+        return c.json({ data: res }, 200);
+    } catch (error: any) {
+        return c.json({ error: "Failed to fetch home page", details: error.message }, 500);
+    }
+});
+
+// 6. ANIME INFO ENDPOINT
+kaidoRouter.get("/info/:animeId", async (c) => {
+    const animeId = decodeURIComponent(c.req.param("animeId"));
+    try {
+        const res = await kaido.getAnimeInfo(animeId);
+        return c.json({ data: res }, 200);
+    } catch (error: any) {
+        return c.json({ error: "Failed to fetch anime info", details: error.message }, 500);
+    }
+});
+
+// 7. SCHEDULE ENDPOINT
+kaidoRouter.get("/schedule", async (c) => {
+    const date = c.req.query("date") || new Date().toISOString().split("T")[0]; // Defaults to today
+    try {
+        const res = await kaido.getEstimatedSchedule(date);
+        return c.json({ data: res }, 200);
+    } catch (error: any) {
+        return c.json({ error: "Failed to fetch schedule", details: error.message }, 500);
+    }
+});
+
 export { kaidoRouter };
