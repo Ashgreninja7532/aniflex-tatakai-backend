@@ -17,21 +17,27 @@ export class KaidoScraper {
     });
 
     // ==========================================
-    // 1. SEARCH
+    // 1. SEARCH (Now with Pagination & Sub/Dub!)
     // ==========================================
-    async search(query: string) {
-        const res = { animes: [] as any[] };
+    async search(query: string, page: number = 1) {
+        const res = { animes: [] as any[], hasNextPage: false };
         try {
-            const { data } = await this.client.get(`${BASE_URL}/search?keyword=${encodeURIComponent(query)}`);
+            const { data } = await this.client.get(`${BASE_URL}/search?keyword=${encodeURIComponent(query)}&page=${page}`);
             const $ = cheerio.load(data);
             
+            res.hasNextPage = $(".pagination > li").last().hasClass("active") ? false : ($(".pagination > li").length > 0);
+
             $("#main-content .tab-content .film_list-wrap .flw-item").each((_, el) => {
                 const id = $(el).find(".film-detail .film-name .dynamic-name").attr("href")?.slice(1).split("?")[0] || "";
                 const name = $(el).find(".film-detail .film-name .dynamic-name").text().trim();
                 const poster = $(el).find(".film-poster .film-poster-img").attr("data-src")?.trim() || "";
                 const type = $(el).find(".film-detail .fd-infor .fdi-item:nth-of-type(1)").text().trim();
                 
-                if (id && name) res.animes.push({ id, name, poster, type });
+                // 🛠️ FIX: Added Sub/Dub Counts
+                const sub = Number($(el).find(".film-poster .tick-sub").text().trim().split(" ").pop()) || 0;
+                const dub = Number($(el).find(".film-poster .tick-dub").text().trim().split(" ").pop()) || 0;
+                
+                if (id && name) res.animes.push({ id, name, poster, type, sub, dub });
             });
             return res;
         } catch (err) { throw err; }
@@ -153,7 +159,7 @@ export class KaidoScraper {
         } catch (err) { throw new Error(`Decryption failed: ${err}`); }
     }
 
-    // ==========================================
+ // ==========================================
     // 5. HOME PAGE DATA
     // ==========================================
     async getHomePage() {
@@ -162,17 +168,17 @@ export class KaidoScraper {
             const { data } = await this.client.get(`${BASE_URL}/home`);
             const $ = cheerio.load(data);
 
-            // Spotlight
             $("#slider .swiper-wrapper .swiper-slide").each((_, el) => {
                 res.spotlightAnimes.push({
                     id: $(el).find(".desi-buttons a").last().attr("href")?.slice(1)?.trim() || "",
                     name: $(el).find(".desi-head-title.dynamic-name").text().trim(),
                     description: $(el).find(".desi-description").text().split("[").shift()?.trim() || "",
                     poster: $(el).find(".film-poster-img").attr("data-src")?.trim() || "",
+                    sub: Number($(el).find(".sc-detail .scd-item .tick-item.tick-sub").text().trim()) || 0,
+                    dub: Number($(el).find(".sc-detail .scd-item .tick-item.tick-dub").text().trim()) || 0,
                 });
             });
 
-            // Trending
             $("#trending-home .swiper-wrapper .swiper-slide").each((_, el) => {
                 res.trendingAnimes.push({
                     id: $(el).find(".film-poster").attr("href")?.slice(1)?.trim() || "",
@@ -181,12 +187,10 @@ export class KaidoScraper {
                 });
             });
 
-            // Latest Episodes
             $("#main-content .block_area_home:nth-of-type(1) .tab-content .film_list-wrap .flw-item").each((_, el) => {
                 res.latestEpisodeAnimes.push(this._extractAnimeCard($, el));
             });
 
-            // Most Popular
             $("#anime-featured .row div:nth-of-type(2) .anif-block-ul ul li").each((_, el) => {
                 res.mostPopularAnimes.push(this._extractTrendingCard($, el));
             });
@@ -194,6 +198,7 @@ export class KaidoScraper {
             return res;
         } catch (err) { throw err; }
     }
+
 
     // ==========================================
     // 6. ANIME INFO (Details Screen)
@@ -210,18 +215,24 @@ export class KaidoScraper {
             res.info.description = $(selector).find(".anisc-detail .film-description .text").text().split("[").shift()?.trim() || "";
             res.info.poster = $(selector).find(".film-poster-img").attr("src")?.trim() || "";
             res.info.quality = $(`${selector} .film-stats .tick .tick-quality`).text().trim() || "HD";
-            res.info.episodes = Number($(`${selector} .film-stats .tick .tick-sub`).text().trim()) || 0;
+            res.info.sub = Number($(`${selector} .film-stats .tick .tick-sub`).text().trim()) || 0;
+            res.info.dub = Number($(`${selector} .film-stats .tick .tick-dub`).text().trim()) || 0;
+            res.info.type = $(`${selector} .film-stats .tick`).text().trim().replace(/[\s\n]+/g, " ").split(" ").at(-2) || "TV";
             
-            // Extract Genres & Studios from the info items
+            // 🛠️ FIX: Proper loop for Genres, Studios, Status, Aired
             res.info.genres = [];
             res.info.studios = [];
             $(`${selector} .anisc-info-wrap .anisc-info .item:not(.w-hide)`).each((_, el) => {
-                const key = $(el).find(".item-head").text().toLowerCase().trim();
-                const value = $(el).find(".name").map((_2, el2) => $(el2).text().trim()).get();
-                if (key.includes("genres")) res.info.genres = value;
-                if (key.includes("studios")) res.info.studios = value;
-                if (key.includes("status")) res.info.status = $(el).find(".name").text().trim();
-                if (key.includes("aired")) res.info.aired = $(el).find(".name").text().trim();
+                let key = $(el).find(".item-head").text().toLowerCase().replace(":", "").trim();
+                if (key === "genres") {
+                    res.info.genres = $(el).find("a").map((_2, el2) => $(el2).text().trim()).get();
+                } else if (key === "studios") {
+                    res.info.studios = $(el).find("a").map((_2, el2) => $(el2).text().trim()).get();
+                } else if (key === "status") {
+                    res.info.status = $(el).find(".name").text().trim();
+                } else if (key === "aired") {
+                    res.info.aired = $(el).find(".name").text().trim();
+                }
             });
 
             // Seasons
@@ -229,12 +240,13 @@ export class KaidoScraper {
                 res.seasons.push({
                     id: $(el).attr("href")?.slice(1)?.trim() || "",
                     name: $(el).attr("title")?.trim() || "",
-                    poster: $(el).find(".season-poster").attr("style")?.split(" ")?.pop()?.split("(")?.pop()?.split(")")[0] || ""
+                    poster: $(el).find(".season-poster").attr("style")?.split(" ")?.pop()?.split("(")?.pop()?.split(")")[0] || "",
+                    isCurrent: $(el).hasClass("active")
                 });
             });
 
-            // Related Anime
-            $("#main-sidebar .block_area_sidebar:nth-of-type(1) .anif-block-ul ul li").each((_, el) => {
+            // 🛠️ FIX: Related Anime selector from hianime.ts
+            $("#main-sidebar .block_area.block_area_sidebar.block_area-realtime:nth-of-type(1) .anif-block-ul ul li").each((_, el) => {
                 res.relatedAnimes.push(this._extractTrendingCard($, el));
             });
 
@@ -242,11 +254,10 @@ export class KaidoScraper {
         } catch (err) { throw err; }
     }
 
-    // ==========================================
+     // ==========================================
     // 7. ESTIMATED SCHEDULE
     // ==========================================
     async getEstimatedSchedule(date: string) {
-        // Date format must be YYYY-MM-DD
         const res = { scheduledAnimes: [] as any[] };
         try {
             const { data } = await this.client.get(`${AJAX_URL}/schedule/list?tzOffset=-330&date=${date}`);
@@ -270,6 +281,8 @@ export class KaidoScraper {
             id: $(el).find(".dynamic-name").attr("href")?.slice(1).split("?")[0] || "",
             name: $(el).find(".dynamic-name").text().trim(),
             poster: $(el).find(".film-poster-img").attr("data-src")?.trim() || "",
+                        sub: Number($(el).find(".tick-sub").text().trim().split(" ").pop()) || 0,
+            dub: Number($(el).find(".tick-dub").text().trim().split(" ").pop()) || 0,
             episodes: Number($(el).find(".tick-sub").text().trim().split(" ").pop()) || 0,
             type: $(el).find(".fdi-item:nth-of-type(1)").text().trim()
         };
@@ -280,8 +293,38 @@ export class KaidoScraper {
             id: $(el).find(".dynamic-name").attr("href")?.slice(1).trim() || "",
             name: $(el).find(".dynamic-name").text().trim(),
             poster: $(el).find(".film-poster-img").attr("data-src")?.trim() || "",
-            episodes: Number($(el).find(".tick-sub").text().trim()) || 0
+            episodes: Number($(el).find(".tick-sub").text().trim()) || 0,
+            sub: Number($(el).find(".tick-sub").text().trim()) || 0,
+            dub: Number($(el).find(".tick-dub").text().trim()) || 0
         };
     }
+
+     // ==========================================
+    // 8. ADVANCED SEARCH (For 'Similar Anime')
+    // ==========================================
+    async advancedSearch(genres: string, page: number = 1) {
+        const res = { animes: [] as any[], hasNextPage: false };
+        try {
+            // Kaido filters genres using comma-separated IDs or names depending on the URL structure
+            // We use the filter page to find similar matches
+            const { data } = await this.client.get(`${BASE_URL}/filter?genre=${genres}&sort=recently_updated&page=${page}`);
+            const $ = cheerio.load(data);
+            
+            res.hasNextPage = $(".pagination > li").last().hasClass("active") ? false : ($(".pagination > li").length > 0);
+
+            $("#main-content .tab-content .film_list-wrap .flw-item").each((_, el) => {
+                const id = $(el).find(".film-detail .film-name .dynamic-name").attr("href")?.slice(1).split("?")[0] || "";
+                const name = $(el).find(".film-detail .film-name .dynamic-name").text().trim();
+                const poster = $(el).find(".film-poster .film-poster-img").attr("data-src")?.trim() || "";
+                const type = $(el).find(".film-detail .fd-infor .fdi-item:nth-of-type(1)").text().trim();
+                const sub = Number($(el).find(".film-poster .tick-sub").text().trim().split(" ").pop()) || 0;
+                const dub = Number($(el).find(".film-poster .tick-dub").text().trim().split(" ").pop()) || 0;
+                
+                if (id && name) res.animes.push({ id, name, poster, type, sub, dub });
+            });
+            return res;
+        } catch (err) { throw err; }
+    }
+
     
 }
