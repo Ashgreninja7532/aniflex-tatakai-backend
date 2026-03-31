@@ -4,12 +4,13 @@ import { KaidoScraper } from "../../engine/kaido.engine.js";
 const kaidoRouter = new Hono();
 const kaido = new KaidoScraper();
 
-// 1. SEARCH ENDPOINT (With Pagination!)
+// 1. SEARCH ENDPOINT (With Pagination & Filters)
 kaidoRouter.get("/search", async (c) => {
     const query = c.req.query("q") || "";
-    const page = parseInt(c.req.query("page") || "1"); // 🛠️ NEW
+    const page = parseInt(c.req.query("page") || "1");
+    
     try {
-        const res = await kaido.search(query, page);
+        const res = await kaido.search(query, page, {});
         return c.json({ data: res }, 200);
     } catch (error) {
         console.error("Search Error:", error);
@@ -114,8 +115,10 @@ kaidoRouter.get("/schedule", async (c) => {
 kaidoRouter.get("/filter", async (c) => {
     const genres = c.req.query("genres") || "";
     const page = parseInt(c.req.query("page") || "1");
+    
     try {
-        const res = await kaido.advancedSearch(genres, page);
+        // 🛠️ FIX: We pass an empty keyword (""), but pass the genres in the filter object!
+        const res = await kaido.search("", page, { genres: genres });
         return c.json({ data: res }, 200);
     } catch (error) {
         console.error("Filter Error:", error);
