@@ -4,15 +4,16 @@ import { KaidoScraper } from "../../engine/kaido.engine.js";
 const kaidoRouter = new Hono();
 const kaido = new KaidoScraper();
 
-// 1. SEARCH ENDPOINT
+// 1. SEARCH ENDPOINT (With Pagination!)
 kaidoRouter.get("/search", async (c) => {
     const query = c.req.query("q") || "";
+    const page = parseInt(c.req.query("page") || "1"); // 🛠️ NEW
     try {
-        const res = await kaido.search(query);
-        return c.json({ data: { animes: res.animes } }, 200);
+        const res = await kaido.search(query, page);
+        return c.json({ data: res }, 200);
     } catch (error) {
         console.error("Search Error:", error);
-        return c.json({ data: { animes: [] } }, 200);
+        return c.json({ data: { animes: [], hasNextPage: false } }, 200);
     }
 });
 
@@ -100,12 +101,25 @@ kaidoRouter.get("/info/:animeId", async (c) => {
 
 // 7. SCHEDULE ENDPOINT
 kaidoRouter.get("/schedule", async (c) => {
-    const date = c.req.query("date") || new Date().toISOString().split("T")[0]; // Defaults to today
+    const date = c.req.query("date") || new Date().toISOString().split("T")[0]; 
     try {
         const res = await kaido.getEstimatedSchedule(date);
         return c.json({ data: res }, 200);
     } catch (error: any) {
-        return c.json({ error: "Failed to fetch schedule", details: error.message }, 500);
+        return c.json({ error: "Failed to fetch schedule" }, 500);
+    }
+});
+
+// 8. ADVANCED SEARCH / FILTER ENDPOINT (For 'Similar' feature)
+kaidoRouter.get("/filter", async (c) => {
+    const genres = c.req.query("genres") || "";
+    const page = parseInt(c.req.query("page") || "1");
+    try {
+        const res = await kaido.advancedSearch(genres, page);
+        return c.json({ data: res }, 200);
+    } catch (error) {
+        console.error("Filter Error:", error);
+        return c.json({ data: { animes: [], hasNextPage: false } }, 200);
     }
 });
 
