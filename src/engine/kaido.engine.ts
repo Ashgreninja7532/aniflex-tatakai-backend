@@ -191,14 +191,21 @@ export class KaidoScraper {
                 res.latestEpisodeAnimes.push(this._extractAnimeCard($, el));
             });
 
-            $("#anime-featured .row div:nth-of-type(2) .anif-block-ul ul li").each((_, el) => {
+             $("#main-sidebar .block_area.block_area_sidebar.block_area-realtime:nth-of-type(2) .anif-block-ul ul li").each((_, el) => {
                 res.mostPopularAnimes.push(this._extractTrendingCard($, el));
+            });
+
+            // 🛠️ FIX: Fetch Top Movies
+            // We do a quick, silent second fetch to the /movie page to grab the top movies!
+            const movieRes = await this.client.get(`${BASE_URL}/movie`);
+            const $m = cheerio.load(movieRes.data);
+            $m("#main-content .tab-content .film_list-wrap .flw-item").slice(0, 10).each((_, el) => {
+                res.topMovies.push(this._extractAnimeCard($m, el));
             });
 
             return res;
         } catch (err) { throw err; }
     }
-
 
     // ==========================================
     // 6. ANIME INFO (Details Screen)
