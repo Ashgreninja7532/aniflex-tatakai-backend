@@ -16,24 +16,44 @@ export class KaidoScraper {
         }
     });
 
- // ==========================================
+// ==========================================
     // 1. SEARCH & ADVANCED SEARCH (Combined)
     // ==========================================
     async search(query: string, page: number = 1, filters: any = {}) {
-        const res = { animes: [] as any[], hasNextPage: false };
+        const res = { animes: [] as any[], totalPages: 1, hasNextPage: false };
         try {
-            // Build the base URL
-            let url = `${BASE_URL}/search?keyword=${encodeURIComponent(query)}&page=${page}`;
+            // Determine if we should use /search or /filter.
+            // If there's no query, or if there are filters applied, Kaido uses /filter.
+            const useFilterRoute = query.trim() === "" || Object.keys(filters).some(k => filters[k]);
+            const routePath = useFilterRoute ? "/filter" : "/search";
 
-            // 🛠️ FIX: Add the advanced filters (like genre) to the URL
-            if (filters.genres) {
-                url += `&genre=${filters.genres}`;
-            }
+            // Safely construct the URL
+            const urlObj = new URL(`${BASE_URL}${routePath}`);
+            urlObj.searchParams.set("keyword", query);
+            urlObj.searchParams.set("page", page.toString());
 
-            const { data } = await this.client.get(url);
+            // 🛠️ FIX: Map all potential filters properly, and fixed 'genre' -> 'genres'
+            if (filters.genres) urlObj.searchParams.set("genres", filters.genres);
+            if (filters.type) urlObj.searchParams.set("type", filters.type);
+            if (filters.status) urlObj.searchParams.set("status", filters.status);
+            if (filters.season) urlObj.searchParams.set("season", filters.season);
+            if (filters.language) urlObj.searchParams.set("language", filters.language);
+            
+            // Add sort. Default to 'default' if it's a filter route to avoid strange clone behaviors
+            if (filters.sort) urlObj.searchParams.set("sort", filters.sort);
+            else if (useFilterRoute) urlObj.searchParams.set("sort", "default");
+
+            const { data } = await this.client.get(urlObj.href);
             const $ = cheerio.load(data);
             
-            res.hasNextPage = $(".pagination > li").last().hasClass("active") ? false : ($(".pagination > li").length > 0);
+            // Better Pagination Logic (extracts the total pages from the DOM)
+            const totalPagesStr = $('.pagination > .page-item a[title="Last"]')?.attr("href")?.split("=").pop() 
+                ?? $('.pagination > .page-item a[title="Next"]')?.attr("href")?.split("=").pop() 
+                ?? $(".pagination > .page-item.active a")?.text()?.trim() 
+                ?? "1";
+            
+            res.totalPages = Number(totalPagesStr) || 1;
+            res.hasNextPage = page < res.totalPages;
 
             $(".film_list-wrap .flw-item").each((_, el) => {
                 const id = $(el).find(".film-detail .film-name .dynamic-name").attr("href")?.slice(1).split("?")[0] || "";
@@ -47,7 +67,9 @@ export class KaidoScraper {
                 if (id && name) res.animes.push({ id, name, poster, type, sub, dub });
             });
             return res;
-        } catch (err) { throw err; }
+        } catch (err) { 
+            throw err; 
+        }
     }
     
     // ==========================================
