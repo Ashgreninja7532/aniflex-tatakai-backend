@@ -111,31 +111,29 @@ kaidoRouter.get("/schedule", async (c) => {
     }
 });
 
-// 8. ADVANCED SEARCH / FILTER ENDPOINT (For 'Similar' feature & Deep Searching)
+// 8. ADVANCED SEARCH / FILTER ENDPOINT
 kaidoRouter.get("/filter", async (c) => {
     const queryParams = c.req.query();
     const page = parseInt(queryParams.page || "1");
-    
-    // Support both 'q' and 'keyword' as the search text, defaults to empty string
     const keyword = queryParams.keyword || queryParams.q || ""; 
     
-    // Extract filters dynamically
+    // Extract ALL filters dynamically
     const filters = {
         genres: queryParams.genres || "",
         type: queryParams.type || "",
         status: queryParams.status || "",
         season: queryParams.season || "",
         language: queryParams.language || "",
-        sort: queryParams.sort || "default"
+        score: queryParams.score || "",
+        rated: queryParams.rated || "",
+        sort: queryParams.sort || ""
     };
     
     try {
         const res = await kaido.search(keyword, page, filters);
         return c.json({ data: res }, 200);
-    } catch (error) {
-        console.error("Filter Error:", error);
-        // We log the error here now, so if the site blocks you or changes routes, you'll see why!
-        return c.json({ data: { animes: [], hasNextPage: false, totalPages: 1 } }, 200);
+    } catch (error: any) {
+        return c.json({ error: "Filter failed", details: error.message }, 500);
     }
 });
 
