@@ -15,38 +15,48 @@ export class KaidoScraper {
             "X-Requested-With": "XMLHttpRequest"
         }
     });
-
+    
 // ==========================================
     // 1. SEARCH & ADVANCED SEARCH (Combined)
     // ==========================================
     async search(query: string, page: number = 1, filters: any = {}) {
         const res = { animes: [] as any[], totalPages: 1, hasNextPage: false };
         try {
-            // Determine if we should use /search or /filter.
-            // If there's no query, or if there are filters applied, Kaido uses /filter.
             const useFilterRoute = query.trim() === "" || Object.keys(filters).some(k => filters[k]);
             const routePath = useFilterRoute ? "/filter" : "/search";
 
-            // Safely construct the URL
             const urlObj = new URL(`${BASE_URL}${routePath}`);
             urlObj.searchParams.set("keyword", query);
             urlObj.searchParams.set("page", page.toString());
 
-            // 🛠️ FIX: Map all potential filters properly, and fixed 'genre' -> 'genres'
-            if (filters.genres) urlObj.searchParams.set("genres", filters.genres);
+            // 🛠️ FIX 1: The site expects 'genre' (singular), 'type', 'status', etc.
+            if (filters.genres) urlObj.searchParams.set("genre", filters.genres); 
             if (filters.type) urlObj.searchParams.set("type", filters.type);
             if (filters.status) urlObj.searchParams.set("status", filters.status);
             if (filters.season) urlObj.searchParams.set("season", filters.season);
             if (filters.language) urlObj.searchParams.set("language", filters.language);
             
-            // Add sort. Default to 'default' if it's a filter route to avoid strange clone behaviors
             if (filters.sort) urlObj.searchParams.set("sort", filters.sort);
             else if (useFilterRoute) urlObj.searchParams.set("sort", "default");
 
-            const { data } = await this.client.get(urlObj.href);
+            console.log(`\n[Kaido Scraper] Fetching URL: ${urlObj.href}`);
+
+            // 🛠️ FIX 2: Do NOT use this.client here! 
+            // We use a fresh axios.get to ensure "X-Requested-With: XMLHttpRequest" is NOT sent.
+            const { data } = await axios.get(urlObj.href, {
+                headers: {
+                    "User-Agent": USER_AGENT,
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                    "Referer": BASE_URL,
+                }
+            });
+
             const $ = cheerio.load(data);
             
-            // Better Pagination Logic (extracts the total pages from the DOM)
+            // Debugging: Let's see if the page actually loaded items
+            const itemsFound = $(".film_list-wrap .flw-item").length;
+            console.log(`[Kaido Scraper] Found ${itemsFound} anime items on page.`);
+
             const totalPagesStr = $('.pagination > .page-item a[title="Last"]')?.attr("href")?.split("=").pop() 
                 ?? $('.pagination > .page-item a[title="Next"]')?.attr("href")?.split("=").pop() 
                 ?? $(".pagination > .page-item.active a")?.text()?.trim() 
@@ -67,7 +77,8 @@ export class KaidoScraper {
                 if (id && name) res.animes.push({ id, name, poster, type, sub, dub });
             });
             return res;
-        } catch (err) { 
+        } catch (err: any) { 
+            console.error(`[Kaido Scraper] Search Error: ${err.message}`);
             throw err; 
         }
     }
