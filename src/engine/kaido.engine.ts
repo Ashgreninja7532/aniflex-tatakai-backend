@@ -76,18 +76,26 @@ export class KaidoScraper {
             res.hasNextPage = page < res.totalPages;
 
             // Extract Anime Cards
-            $(".film_list-wrap .flw-item").each((_, el) => {
+           $(".film_list-wrap .flw-item").each((_, el) => {
                 const id = $(el).find(".film-detail .film-name .dynamic-name").attr("href")?.slice(1).split("?")[0] || "";
                 const name = $(el).find(".film-detail .film-name .dynamic-name").text().trim();
                 const poster = $(el).find(".film-poster .film-poster-img").attr("data-src")?.trim() || "";
-                const type = $(el).find(".film-detail .fd-infor .fdi-item:nth-of-type(1)").text().trim();
-                const epsText = $(el).find(".film-poster .tick-eps").text().trim().split(" ").pop();
-                // If tick-eps is missing, the total episodes is usually equal to the latest subbed episode
-                const episodes = Number(epsText) || 0;
-                const sub = Number($(el).find(".film-poster .tick-sub").text().trim().split(" ").pop()) || 0;
-                const dub = Number($(el).find(".film-poster .tick-dub").text().trim().split(" ").pop()) || 0;
+                const type = $(el).find(".film-detail .fd-infor .fdi-item:nth-of-type(1)").text().trim() || "TV";
                 
-                if (id && name) res.animes.push({ id, name, poster, type, episodes, sub, dub });
+                const epsText = $(el).find(".film-poster .tick-eps").text().trim().split(" ").pop();
+                const subText = $(el).find(".film-poster .tick-sub").text().trim().split(" ").pop();
+                const dubText = $(el).find(".film-poster .tick-dub").text().trim().split(" ").pop();
+                
+                // 1. Declare `sub` and `dub` FIRST
+                const sub = Number(subText) || 0;
+                const dub = Number(dubText) || 0;
+                
+                // 2. THEN calculate `episodes` using `sub`
+                const episodes = Number(epsText) || sub || 0; 
+                
+                if (id && name) {
+                    res.animes.push({ id, name, poster, type, episodes, sub, dub });
+                }
             });
             return res;
         } catch (err: any) { 
