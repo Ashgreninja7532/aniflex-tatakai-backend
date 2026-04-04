@@ -81,11 +81,15 @@ export class KaidoScraper {
                 const name = $(el).find(".film-detail .film-name .dynamic-name").text().trim();
                 const poster = $(el).find(".film-poster .film-poster-img").attr("data-src")?.trim() || "";
                 const type = $(el).find(".film-detail .fd-infor .fdi-item:nth-of-type(1)").text().trim();
-                
+                const epsText = $(el).find(".film-poster .tick-eps").text().trim().split(" ").pop();
+                 const sub = Number(subText) || 0;
+                const dub = Number(dubText) || 0;
+                // If tick-eps is missing, the total episodes is usually equal to the latest subbed episode
+                const episodes = Number(epsText) || sub || 0;
                 const sub = Number($(el).find(".film-poster .tick-sub").text().trim().split(" ").pop()) || 0;
                 const dub = Number($(el).find(".film-poster .tick-dub").text().trim().split(" ").pop()) || 0;
                 
-                if (id && name) res.animes.push({ id, name, poster, type, sub, dub });
+                if (id && name) res.animes.push({ id, name, poster, type, episodes, sub, dub });
             });
             return res;
         } catch (err: any) { 
@@ -220,24 +224,34 @@ export class KaidoScraper {
             const $ = cheerio.load(data);
 
             $("#slider .swiper-wrapper .swiper-slide").each((_, el) => {
+                const sub = Number($(el).find(".sc-detail .scd-item .tick-item.tick-sub").text().trim()) || 0;
+                const dub = Number($(el).find(".sc-detail .scd-item .tick-item.tick-dub").text().trim()) || 0;
+                const eps = Number($(el).find(".sc-detail .scd-item .tick-item.tick-eps").text().trim()) || sub || 0;
+
                 res.spotlightAnimes.push({
                     id: $(el).find(".desi-buttons a").last().attr("href")?.slice(1)?.trim() || "",
                     name: $(el).find(".desi-head-title.dynamic-name").text().trim(),
                     description: $(el).find(".desi-description").text().split("[").shift()?.trim() || "",
                     poster: $(el).find(".film-poster-img").attr("data-src")?.trim() || "",
-                    sub: Number($(el).find(".sc-detail .scd-item .tick-item.tick-sub").text().trim()) || 0,
-                    dub: Number($(el).find(".sc-detail .scd-item .tick-item.tick-dub").text().trim()) || 0,
+                    episodes: eps,
+                    sub: sub,
+                    dub: dub,
                 });
             });
 
-            $("#trending-home .swiper-wrapper .swiper-slide").each((_, el) => {
+              $("#trending-home .swiper-wrapper .swiper-slide").each((_, el) => {
                 res.trendingAnimes.push({
                     id: $(el).find(".film-poster").attr("href")?.slice(1)?.trim() || "",
                     name: $(el).find(".film-title.dynamic-name").text().trim(),
-                    poster: $(el).find(".film-poster-img").attr("data-src")?.trim() || ""
+                    poster: $(el).find(".film-poster-img").attr("data-src")?.trim() || "",
+                    // Trending swiper normally doesn't show episode numbers in the UI, 
+                    // but we will provide 0s so your Flutter models don't break.
+                    episodes: 0,
+                    sub: 0,
+                    dub: 0
                 });
             });
-
+            
             $("#main-content .block_area_home:nth-of-type(1) .tab-content .film_list-wrap .flw-item").each((_, el) => {
                 res.latestEpisodeAnimes.push(this._extractAnimeCard($, el));
             });
@@ -350,27 +364,42 @@ export class KaidoScraper {
 
     // --- INTERNAL UI SCRAPING HELPERS ---
     private _extractAnimeCard($: any, el: any) {
+        const epsText = $(el).find(".tick-eps").text().trim().split(" ").pop();
+        const subText = $(el).find(".tick-sub").text().trim().split(" ").pop();
+        const dubText = $(el).find(".tick-dub").text().trim().split(" ").pop();
+
+        const sub = Number(subText) || 0;
+        const dub = Number(dubText) || 0;
+        const episodes = Number(epsText) || sub || 0;
+
         return {
             id: $(el).find(".dynamic-name").attr("href")?.slice(1).split("?")[0] || "",
             name: $(el).find(".dynamic-name").text().trim(),
             poster: $(el).find(".film-poster-img").attr("data-src")?.trim() || "",
-                        sub: Number($(el).find(".tick-sub").text().trim().split(" ").pop()) || 0,
-            dub: Number($(el).find(".tick-dub").text().trim().split(" ").pop()) || 0,
-            episodes: Number($(el).find(".tick-sub").text().trim().split(" ").pop()) || 0,
-            type: $(el).find(".fdi-item:nth-of-type(1)").text().trim()
+            type: $(el).find(".fdi-item:nth-of-type(1)").text().trim() || "TV",
+            episodes: episodes,
+            sub: sub,
+            dub: dub
         };
     }
 
     private _extractTrendingCard($: any, el: any) {
+        const epsText = $(el).find(".tick-eps").text().trim().split(" ").pop();
+        const subText = $(el).find(".tick-sub").text().trim().split(" ").pop();
+        const dubText = $(el).find(".tick-dub").text().trim().split(" ").pop();
+
+        const sub = Number(subText) || 0;
+        const dub = Number(dubText) || 0;
+        const episodes = Number(epsText) || sub || 0;
+
         return {
             id: $(el).find(".dynamic-name").attr("href")?.slice(1).trim() || "",
             name: $(el).find(".dynamic-name").text().trim(),
             poster: $(el).find(".film-poster-img").attr("data-src")?.trim() || "",
-            episodes: Number($(el).find(".tick-sub").text().trim()) || 0,
-            sub: Number($(el).find(".tick-sub").text().trim()) || 0,
-            dub: Number($(el).find(".tick-dub").text().trim()) || 0
+            episodes: episodes,
+            sub: sub,
+            dub: dub
         };
     }
-
     
 }
