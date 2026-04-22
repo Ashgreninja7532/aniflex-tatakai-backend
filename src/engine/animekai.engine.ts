@@ -160,14 +160,34 @@ export class AnimeKaiScraper {
             // 5. Decrypt MegaUp Video
             let finalData;
             try {
-                const megaUrl = decoded.url.replace("/e/", "/media/");
-                // 🛠️ FIX: Removed the 'Referer' header here to match original megaup.ts! This usually fixes the 403.
-                const { data: megaData } = await axios.get(megaUrl, { headers: { "User-Agent": USER_AGENT, "Connection": "keep-alive" } });
-                
-                const res = await axios.post(`${ENC_API}/dec-mega`, { text: megaData.result, agent: USER_AGENT });
-                finalData = res.data.result;
-            } catch (e: any) { throw new Error(`MegaUp Video Fetch failed (Step 5): ${e.message} - URL: ${decoded?.url}`); }
+                // 🛠️ FIX: If the URL is an internal iframe, we must fetch the HTML first!
+                let megaEncryptedString = "";
 
+                if (decoded.url.includes("anikai.to/iframe/")) {
+                    // Fetch the iframe page using standard AnimeKai headers
+                    const iframeRes = await this.client.get(decoded.url, {
+                        headers: { "Referer": `${BASE_URL}/watch/${animeSlug}` }
+                    });
+                    
+                    // The encrypted video string is inside the HTML inside JSON!
+                    // e.g., {"result": "ENCRYPTED_STRING"}
+                    const iframeJson = typeof iframeRes.data === "string" ? JSON.parse(iframeRes.data) : iframeRes.data;
+                    megaEncryptedString = iframeJson.result || iframeRes.data;
+                    
+                } else {
+                    // Fallback for older external MegaUp links
+                    const megaUrl = decoded.url.replace("/e/", "/media/");
+                    const { data: megaData } = await axios.get(megaUrl, { headers: { "User-Agent": USER_AGENT, "Connection": "keep-alive" } });
+                    megaEncryptedString = megaData.result || megaData;
+                }
+                
+                // Now we send the encrypted string to the API for decryption
+                const res = await axios.post(`${ENC_API}/dec-mega`, { text: megaEncryptedString, agent: USER_AGENT });
+                finalData = res.data.result;
+
+            } catch (e: any) { 
+                throw new Error(`MegaUp Video Fetch failed (Step 5): ${e.message} - URL: ${decoded?.url}`); 
+            }
             return {
                 sources: finalData.sources.map((s: any) => ({
                     url: s.file,
