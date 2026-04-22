@@ -107,9 +107,13 @@ export class AnimeKaiScraper {
             const { data: serverHtml } = await this.client.get(`${BASE_URL}/ajax/links/list?token=${token}&_=${ajaxToken}`);
             const $ = cheerio.load(serverHtml);
             
-            // Find the first available server for the requested category
-            const serverLid = $(`.server-items.lang-group[data-id='${subOrDub}'] .server`).first().attr("data-lid");
-            if (!serverLid) throw new Error(`No server found for ${category}`);
+            // 🛠️ FIX: Broader CSS Selectors to catch both AnimeKai layout styles!
+            let serverLid = $(`.server-items.lang-group[data-id='${subOrDub}'] .server`).first().attr("data-lid");
+            if (!serverLid) {
+                serverLid = $(`.lang-group[data-id='${subOrDub}'] .server`).first().attr("data-lid");
+            }
+            
+            if (!serverLid) throw new Error(`No server found for category: ${category}`);
 
             // View the Link
             const viewTokenRes = await axios.get(`${ENC_API}/enc-kai?text=${encodeURIComponent(serverLid)}`);
@@ -143,9 +147,10 @@ export class AnimeKaiScraper {
                 headers: { "Referer": BASE_URL }
             };
 
-        } catch (err) {
-            console.error("[AnimeKai] Sources Error:", err);
-            return null;
+        } catch (err: any) {
+            // 🛠️ FIX: Now throws the actual error message so the router can display it in the browser!
+            console.error("[AnimeKai] Sources Error:", err.message);
+            throw new Error(err.message); 
         }
     }
 }
