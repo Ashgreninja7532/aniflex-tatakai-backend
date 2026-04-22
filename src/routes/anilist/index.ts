@@ -1,6 +1,20 @@
 import { Hono } from 'hono';
 
 const anilistRouter = new Hono();
+
+// 🛠️ FIX: Vercel Edge Caching Middleware
+// Applies to EVERY route inside the anilistRouter automatically!
+anilistRouter.use('*', async (c, next) => {
+  await next();
+  
+  // Only cache successful responses (HTTP 200 OK)
+  if (c.res.status === 200) {
+    // s-maxage=3600 : Cache on Vercel's global servers for 1 hour.
+    // stale-while-revalidate=86400 : If AniList is slow/down, serve the old cache for up to 24 hours while Vercel retries in the background!
+    c.header('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400');
+  }
+});
+
 const ANILIST_URL = 'https://graphql.anilist.co';
 
 // ==========================================

@@ -408,4 +408,8 @@ export class KaidoScraper {
         };
     }
     
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> 0630e6400f032f6fea8f97a0413d1002ec6c604f
