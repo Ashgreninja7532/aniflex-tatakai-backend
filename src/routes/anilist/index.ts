@@ -72,6 +72,16 @@ query($page: Int, $perPage: Int, $airingAt_lesser: Int) {
 
 const GENRES_QUERY = `query { GenreCollection }`;
 
+const SCHEDULE_QUERY = `
+query($start: Int, $end: Int, $page: Int) {
+  Page(page: $page, perPage: 100) {
+    airingSchedules(airingAt_greater: $start, airingAt_lesser: $end, sort: TIME) {
+      id episode airingAt
+      media { id title { romaji english native } coverImage { extraLarge } isAdult format status }
+    }
+  }
+}`;
+
 // ==========================================
 // HELPER FUNCTION
 // ==========================================
@@ -93,10 +103,13 @@ const fetchAnilist = async (query: string, variables: any = {}) => {
 // 1. Basic Search
 anilistRouter.get('/search', async (c) => {
   const query = c.req.query('q');
+  // 🛠️ FIX: Extract the page from the URL, default to 1
+  const page = c.req.query('page') || "1"; 
   if (!query) return c.json({ error: "Query 'q' is required" }, 400);
 
   try {
-    const data: any = await fetchAnilist(SEARCH_QUERY, { search: query, page: 1, perPage: 15 });
+    // 🛠️ FIX: Pass parseInt(page) to the AniList fetcher instead of hardcoding 1
+    const data: any = await fetchAnilist(SEARCH_QUERY, { search: query, page: parseInt(page), perPage: 20 });
     return c.json(data.data.Page.media);
   } catch (err) {
     return c.json({ error: "AniList Search Failed" }, 500);
@@ -257,6 +270,25 @@ anilistRouter.get('/recent-episodes', async (c) => {
     return c.json(data.data.Page);
   } catch (err) {
     return c.json({ error: "Recent Episodes Fetch Failed" }, 500);
+  }
+});
+
+// 8. Airing Schedule (By Date Range)
+anilistRouter.get('/schedule', async (c) => {
+  const start = c.req.query('start');
+  const end = c.req.query('end');
+  if (!start || !end) return c.json({ error: "start and end timestamps required" }, 400);
+
+  try {
+    // Fetch up to 100 episodes airing within this time frame (plenty for a single day)
+    const data: any = await fetchAnilist(SCHEDULE_QUERY, { start: parseInt(start), end: parseInt(end), page: 1 });
+    
+    // Filter out 18+ content safely
+    const safeEpisodes = data.data.Page.airingSchedules.filter((item: any) => item.media.isAdult === false);
+    
+    return c.json(safeEpisodes);
+  } catch (err) {
+    return c.json({ error: "Schedule Fetch Failed" }, 500);
   }
 });
 

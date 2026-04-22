@@ -15,28 +15,95 @@ export class KaidoScraper {
             "X-Requested-With": "XMLHttpRequest"
         }
     });
-
+    
+// ==========================================
+    // 1. SEARCH & ADVANCED SEARCH (Combined)
     // ==========================================
-    // 1. SEARCH
-    // ==========================================
-    async search(query: string) {
-        const res = { animes: [] as any[] };
+    async search(query: string, page: number = 1, filters: any = {}) {
+        const res = { animes: [] as any[], totalPages: 1, hasNextPage: false };
         try {
-            const { data } = await this.client.get(`${BASE_URL}/search?keyword=${encodeURIComponent(query)}`);
-            const $ = cheerio.load(data);
+            // Determine route based on whether we have filters or an empty query
+            const hasFilters = Object.keys(filters).some(k => filters[k] !== "" && filters[k] !== undefined);
+            const routePath = hasFilters || query.trim() === "" ? "/filter" : "/search";
+
+            const urlObj = new URL(`${BASE_URL}${routePath}`);
+
+            // 🛠️ CRITICAL FIX: Only attach 'keyword' if it actually has text!
+            // Kaido throws a 500 Server Error if you pass an empty 'keyword=' to /filter
+            if (query.trim() !== "") {
+                urlObj.searchParams.set("keyword", query);
+            }
+
+            // Set Pagination
+            urlObj.searchParams.set("page", page.toString());
+
+            // 🛠️ CRITICAL FIX: Append filters exactly as your DevTools screenshot shows
+            if (filters.genres) urlObj.searchParams.set("genres", filters.genres); 
+            if (filters.type) urlObj.searchParams.set("type", filters.type);
+            if (filters.status) urlObj.searchParams.set("status", filters.status);
+            if (filters.score) urlObj.searchParams.set("score", filters.score);
+            if (filters.rated) urlObj.searchParams.set("rated", filters.rated);
+            if (filters.season) urlObj.searchParams.set("season", filters.season);
+            if (filters.language) urlObj.searchParams.set("language", filters.language);
             
-            $("#main-content .tab-content .film_list-wrap .flw-item").each((_, el) => {
+            // Default sorting for filters to prevent 500 errors
+            if (filters.sort) {
+                urlObj.searchParams.set("sort", filters.sort);
+            } else if (routePath === "/filter") {
+                urlObj.searchParams.set("sort", "default");
+            }
+
+            console.log(`[Kaido Scraper] Fetching EXACT URL: ${urlObj.href}`);
+
+            // Fresh axios call without XMLHttpRequest to mimic a real browser
+            const { data } = await axios.get(urlObj.href, {
+                headers: {
+                    "User-Agent": USER_AGENT,
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                    "Referer": BASE_URL,
+                }
+            });
+
+            const $ = cheerio.load(data);
+
+            // Extract Total Pages safely
+            const totalPagesStr = $('.pagination > .page-item a[title="Last"]')?.attr("href")?.split("=").pop() 
+                ?? $('.pagination > .page-item a[title="Next"]')?.attr("href")?.split("=").pop() 
+                ?? $(".pagination > .page-item.active a")?.text()?.trim() 
+                ?? "1";
+            
+            res.totalPages = Number(totalPagesStr) || 1;
+            res.hasNextPage = page < res.totalPages;
+
+            // Extract Anime Cards
+           $(".film_list-wrap .flw-item").each((_, el) => {
                 const id = $(el).find(".film-detail .film-name .dynamic-name").attr("href")?.slice(1).split("?")[0] || "";
                 const name = $(el).find(".film-detail .film-name .dynamic-name").text().trim();
                 const poster = $(el).find(".film-poster .film-poster-img").attr("data-src")?.trim() || "";
-                const type = $(el).find(".film-detail .fd-infor .fdi-item:nth-of-type(1)").text().trim();
+                const type = $(el).find(".film-detail .fd-infor .fdi-item:nth-of-type(1)").text().trim() || "TV";
                 
-                if (id && name) res.animes.push({ id, name, poster, type });
+                const epsText = $(el).find(".film-poster .tick-eps").text().trim().split(" ").pop();
+                const subText = $(el).find(".film-poster .tick-sub").text().trim().split(" ").pop();
+                const dubText = $(el).find(".film-poster .tick-dub").text().trim().split(" ").pop();
+                
+                // 1. Declare `sub` and `dub` FIRST
+                const sub = Number(subText) || 0;
+                const dub = Number(dubText) || 0;
+                
+                // 2. THEN calculate `episodes` using `sub`
+                const episodes = Number(epsText) || sub || 0; 
+                
+                if (id && name) {
+                    res.animes.push({ id, name, poster, type, episodes, sub, dub });
+                }
             });
             return res;
-        } catch (err) { throw err; }
+        } catch (err: any) { 
+            console.error(`[Kaido Scraper] Search Error: ${err.message}`);
+            throw err; 
+        }
     }
-
+    
     // ==========================================
     // 2. EPISODES LIST (Updated URL logic)
     // ==========================================
@@ -152,4 +219,193 @@ export class KaidoScraper {
 
         } catch (err) { throw new Error(`Decryption failed: ${err}`); }
     }
+
+ // ==========================================
+    // 5. HOME PAGE DATA
+    // ==========================================
+    async getHomePage() {
+        const res = { spotlightAnimes: [] as any[], trendingAnimes: [] as any[], topMovies: [] as any[], latestEpisodeAnimes: [] as any[], mostPopularAnimes: [] as any[] };
+        try {
+            const { data } = await this.client.get(`${BASE_URL}/home`);
+            const $ = cheerio.load(data);
+
+            $("#slider .swiper-wrapper .swiper-slide").each((_, el) => {
+                const sub = Number($(el).find(".sc-detail .scd-item .tick-item.tick-sub").text().trim()) || 0;
+                const dub = Number($(el).find(".sc-detail .scd-item .tick-item.tick-dub").text().trim()) || 0;
+                const eps = Number($(el).find(".sc-detail .scd-item .tick-item.tick-eps").text().trim()) || sub || 0;
+
+                res.spotlightAnimes.push({
+                    id: $(el).find(".desi-buttons a").last().attr("href")?.slice(1)?.trim() || "",
+                    name: $(el).find(".desi-head-title.dynamic-name").text().trim(),
+                    description: $(el).find(".desi-description").text().split("[").shift()?.trim() || "",
+                    poster: $(el).find(".film-poster-img").attr("data-src")?.trim() || "",
+                    episodes: eps,
+                    sub: sub,
+                    dub: dub,
+                });
+            });
+
+              $("#trending-home .swiper-wrapper .swiper-slide").each((_, el) => {
+                res.trendingAnimes.push({
+                    id: $(el).find(".film-poster").attr("href")?.slice(1)?.trim() || "",
+                    name: $(el).find(".film-title.dynamic-name").text().trim(),
+                    poster: $(el).find(".film-poster-img").attr("data-src")?.trim() || "",
+                    // Trending swiper normally doesn't show episode numbers in the UI, 
+                    // but we will provide 0s so your Flutter models don't break.
+                    episodes: 0,
+                    sub: 0,
+                    dub: 0
+                });
+            });
+            
+            $("#main-content .block_area_home:nth-of-type(1) .tab-content .film_list-wrap .flw-item").each((_, el) => {
+                res.latestEpisodeAnimes.push(this._extractAnimeCard($, el));
+            });
+
+             $("#main-sidebar .block_area.block_area_sidebar.block_area-realtime:nth-of-type(2) .anif-block-ul ul li").each((_, el) => {
+                res.mostPopularAnimes.push(this._extractTrendingCard($, el));
+            });
+
+            // 🛠️ FIX: Fetch Top Movies
+            // We do a quick, silent second fetch to the /movie page to grab the top movies!
+            const movieRes = await this.client.get(`${BASE_URL}/movie`);
+            const $m = cheerio.load(movieRes.data);
+            $m("#main-content .tab-content .film_list-wrap .flw-item").slice(0, 10).each((_, el) => {
+                res.topMovies.push(this._extractAnimeCard($m, el));
+            });
+
+            return res;
+        } catch (err) { throw err; }
+    }
+
+    // ==========================================
+    // 6. ANIME INFO (Details Screen)
+    // ==========================================
+    async getAnimeInfo(animeId: string) {
+        const res = { info: {} as any, seasons: [] as any[], relatedAnimes: [] as any[] };
+        try {
+            const { data } = await this.client.get(`${BASE_URL}/${animeId}`);
+            const $ = cheerio.load(data);
+            const selector = "#ani_detail .container .anis-content";
+
+             try {
+                const syncDataText = $("body").find("#syncData").text();
+                if (syncDataText) {
+                    const syncData = JSON.parse(syncDataText);
+                    res.info.anilistId = Number(syncData.anilist_id) || null;
+                    res.info.malId = Number(syncData.mal_id) || null;
+                } else {
+                    res.info.anilistId = null;
+                    res.info.malId = null;
+                }
+            } catch (err) {
+                res.info.anilistId = null;
+                res.info.malId = null;
+            }
+
+            res.info.id = animeId;
+            res.info.name = $(selector).find(".anisc-detail .film-name.dynamic-name").text().trim() || "";
+            res.info.description = $(selector).find(".anisc-detail .film-description .text").text().split("[").shift()?.trim() || "";
+            res.info.poster = $(selector).find(".film-poster-img").attr("src")?.trim() || "";
+            res.info.quality = $(`${selector} .film-stats .tick .tick-quality`).text().trim() || "HD";
+            res.info.sub = Number($(`${selector} .film-stats .tick .tick-sub`).text().trim()) || 0;
+            res.info.dub = Number($(`${selector} .film-stats .tick .tick-dub`).text().trim()) || 0;
+            res.info.type = $(`${selector} .film-stats .tick`).text().trim().replace(/[\s\n]+/g, " ").split(" ").at(-2) || "TV";
+            
+            // 🛠️ FIX: Proper loop for Genres, Studios, Status, Aired
+            res.info.genres = [];
+            res.info.studios = [];
+            $(`${selector} .anisc-info-wrap .anisc-info .item:not(.w-hide)`).each((_, el) => {
+                let key = $(el).find(".item-head").text().toLowerCase().replace(":", "").trim();
+                if (key === "genres") {
+                    res.info.genres = $(el).find("a").map((_2, el2) => $(el2).text().trim()).get();
+                } else if (key === "studios") {
+                    res.info.studios = $(el).find("a").map((_2, el2) => $(el2).text().trim()).get();
+                } else if (key === "status") {
+                    res.info.status = $(el).find(".name").text().trim();
+                } else if (key === "aired") {
+                    res.info.aired = $(el).find(".name").text().trim();
+                }
+            });
+
+            // Seasons
+            $("#main-content .os-list a.os-item").each((_, el) => {
+                res.seasons.push({
+                    id: $(el).attr("href")?.slice(1)?.trim() || "",
+                    name: $(el).attr("title")?.trim() || "",
+                    poster: $(el).find(".season-poster").attr("style")?.split(" ")?.pop()?.split("(")?.pop()?.split(")")[0] || "",
+                    isCurrent: $(el).hasClass("active")
+                });
+            });
+
+            // 🛠️ FIX: Related Anime selector from hianime.ts
+            $("#main-sidebar .block_area.block_area_sidebar.block_area-realtime:nth-of-type(1) .anif-block-ul ul li").each((_, el) => {
+                res.relatedAnimes.push(this._extractTrendingCard($, el));
+            });
+
+            return res;
+        } catch (err) { throw err; }
+    }
+
+     // ==========================================
+    // 7. ESTIMATED SCHEDULE
+    // ==========================================
+    async getEstimatedSchedule(date: string) {
+        const res = { scheduledAnimes: [] as any[] };
+        try {
+            const { data } = await this.client.get(`${AJAX_URL}/schedule/list?tzOffset=-330&date=${date}`);
+            const $ = cheerio.load(data.html);
+
+            $("li").each((_, el) => {
+                res.scheduledAnimes.push({
+                    id: $(el).find("a").attr("href")?.slice(1)?.trim() || "",
+                    time: $(el).find("a .time").text().trim() || "",
+                    name: $(el).find("a .film-name.dynamic-name").text().trim() || "",
+                    episode: Number($(el).find("a .fd-play button").text().trim().split(" ")[1]) || 0
+                });
+            });
+            return res;
+        } catch (err) { throw err; }
+    }
+
+    // --- INTERNAL UI SCRAPING HELPERS ---
+    private _extractAnimeCard($: any, el: any) {
+        const epsText = $(el).find(".tick-eps").text().trim().split(" ").pop();
+        const subText = $(el).find(".tick-sub").text().trim().split(" ").pop();
+        const dubText = $(el).find(".tick-dub").text().trim().split(" ").pop();
+
+        const sub = Number(subText) || 0;
+        const dub = Number(dubText) || 0;
+        const episodes = Number(epsText) || sub || 0;
+
+        return {
+            id: $(el).find(".dynamic-name").attr("href")?.slice(1).split("?")[0] || "",
+            name: $(el).find(".dynamic-name").text().trim(),
+            poster: $(el).find(".film-poster-img").attr("data-src")?.trim() || "",
+            type: $(el).find(".fdi-item:nth-of-type(1)").text().trim() || "TV",
+            episodes: episodes,
+            sub: sub,
+            dub: dub
+        };
+    }
+
+    private _extractTrendingCard($: any, el: any) {
+        const epsText = $(el).find(".tick-eps").text().trim().split(" ").pop();
+        const subText = $(el).find(".tick-sub").text().trim().split(" ").pop();
+        const dubText = $(el).find(".tick-dub").text().trim().split(" ").pop();
+
+        const sub = Number(subText) || 0;
+        const dub = Number(dubText) || 0;
+        const episodes = Number(epsText) || sub || 0;
+
+        return {
+            id: $(el).find(".dynamic-name").attr("href")?.slice(1).trim() || "",
+            name: $(el).find(".dynamic-name").text().trim(),
+            poster: $(el).find(".film-poster-img").attr("data-src")?.trim() || "",
+            episodes: episodes,
+            sub: sub,
+            dub: dub
+        };
+    }
+    
 }
