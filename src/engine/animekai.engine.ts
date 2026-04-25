@@ -96,7 +96,7 @@ export class AnimeKaiScraper {
         } catch (err) { return []; }
     }
 
-    // ==========================================
+   // ==========================================
     // 3. ANIME INFO & RELATIONS
     // ==========================================
     async getAnimeInfo(animeSlug: string) {
@@ -114,31 +114,46 @@ export class AnimeKaiScraper {
                 type: infoBox.find(".info").children().last().text().toUpperCase().trim(),
                 sub: parseInt(infoBox.find(".info > span.sub").text()) || 0,
                 dub: parseInt(infoBox.find(".info > span.dub").text()) || 0,
+                episodes: 0, // Will be updated if an exact count is found
                 genres: [], studios: [], producers: [],
                 relations: []
             };
 
-            // Extract Meta Data
+            // 🛠️ FIX: Robust Metadata Extraction based on <b> labels
             infoBox.find(".detail div").each((_, el) => {
-                const text = $(el).text().trim();
-                const head = $(el).find(".item-head").text().toLowerCase().trim();
+                const label = $(el).find("b").first().text().toLowerCase().trim();
+                const rawText = $(el).text().trim();
                 
-                if (head.includes("genres")) {
+                if (label.includes("genres:")) {
                     info.genres = $(el).find("a").map((_, a) => $(a).text().trim()).get();
-                } else if (head.includes("studios")) {
+                } else if (label.includes("studios:")) {
                     info.studios = $(el).find("a").map((_, a) => $(a).text().trim()).get();
-                } else if (head.includes("producers")) {
+                } else if (label.includes("producers:")) {
                     info.producers = $(el).find("a").map((_, a) => $(a).text().trim()).get();
-                } else if (head.includes("status")) {
-                    info.status = $(el).find(".name").text().trim();
-                } else if (head.includes("aired")) {
-                    info.aired = $(el).find(".name").text().trim();
-                } else if (head.includes("premiered")) {
-                    info.premiered = $(el).find(".name").text().trim();
+                } else if (label.includes("status:")) {
+                    info.status = rawText.replace("Status:", "").trim();
+                } else if (label.includes("aired:")) {
+                    info.aired = rawText.replace("Aired:", "").trim();
+                } else if (label.includes("premiered:")) {
+                    info.premiered = rawText.replace("Premiered:", "").trim();
                 }
             });
 
-            // Extract Relations
+            // 🛠️ FIX: Attempt to get Total Episodes
+            // AnimeKai often hides total episodes. We fallback to the highest Sub/Dub count.
+            info.episodes = Math.max(info.sub, info.dub);
+
+            // External Links (Extract AniList / MAL IDs)
+            infoBox.find(".external-links a").each((_, el) => {
+                const href = $(el).attr("href") || "";
+                if (href.includes("myanimelist.net/anime/")) {
+                    info.malId = href.split("anime/")[1]?.split("/")[0];
+                } else if (href.includes("anilist.co/anime/")) {
+                    info.anilistId = href.split("anime/")[1]?.split("/")[0];
+                }
+            });
+
+            // Related Anime
             $("section#related-anime .aitem-col a.aitem").each((_, el) => {
                 const aTag = $(el);
                 info.relations.push({
@@ -148,6 +163,7 @@ export class AnimeKaiScraper {
                     relationType: aTag.find(".info span > b.text-muted").text().trim() || "RELATED",
                     sub: parseInt(aTag.find(".info span.sub").text()) || 0,
                     dub: parseInt(aTag.find(".info span.dub").text()) || 0,
+                    type: aTag.find(".info").children().last().text().trim(),
                 });
             });
 
