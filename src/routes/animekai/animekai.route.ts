@@ -4,75 +4,61 @@ import { AnimeKaiScraper } from "../../engine/animekai.engine.js";
 const animekaiRouter = new Hono();
 const animekai = new AnimeKaiScraper();
 
-// 1. SEARCH ENDPOINT
 animekaiRouter.get("/search", async (c) => {
-    const query = c.req.query("q") || "";
+    const q = c.req.query("q") || "";
     const page = parseInt(c.req.query("page") || "1");
-    try {
-        const res = await animekai.search(query, page);
-        return c.json({ data: res }, 200);
-    } catch (error) {
-        console.error("AnimeKai Search Error:", error);
-        return c.json({ data: { animes: [], hasNextPage: false } }, 200);
-    }
+    try { return c.json({ data: await animekai.search(q, page) }, 200); } 
+    catch (e) { return c.json({ data: { animes: [] } }, 200); }
 });
 
-// 2. EPISODES LIST ENDPOINT
+animekaiRouter.get("/filter", async (c) => {
+    const genre = c.req.query("genre") || "";
+    const page = parseInt(c.req.query("page") || "1");
+    try { return c.json({ data: await animekai.genreSearch(genre, page) }, 200); } 
+    catch (e) { return c.json({ data: { animes: [] } }, 200); }
+});
+
+animekaiRouter.get("/spotlight", async (c) => {
+    try { return c.json({ data: await animekai.getSpotlight() }, 200); } 
+    catch (e) { return c.json({ data: [] }, 200); }
+});
+
+animekaiRouter.get("/recent-episodes", async (c) => {
+    const page = parseInt(c.req.query("page") || "1");
+    try { return c.json({ data: await animekai.recentlyUpdated(page) }, 200); } 
+    catch (e) { return c.json({ data: { animes: [] } }, 200); }
+});
+
+animekaiRouter.get("/movies", async (c) => {
+    const page = parseInt(c.req.query("page") || "1");
+    try { return c.json({ data: await animekai.movies(page) }, 200); } 
+    catch (e) { return c.json({ data: { animes: [] } }, 200); }
+});
+
+animekaiRouter.get("/info/:animeId", async (c) => {
+    const animeId = decodeURIComponent(c.req.param("animeId"));
+    try { return c.json({ data: await animekai.getAnimeInfo(animeId) }, 200); } 
+    catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
 animekaiRouter.get("/anime/:animeId/episodes", async (c) => {
     const animeId = decodeURIComponent(c.req.param("animeId"));
-    try {
-        const res = await animekai.getEpisodes(animeId);
-        return c.json({ data: res }, 200);
-    } catch (error) {
-        console.error("AnimeKai Episodes Error:", error);
-        return c.json({ error: "Failed to fetch episodes" }, 500);
-    }
+    try { return c.json({ data: await animekai.getEpisodes(animeId) }, 200); } 
+    catch (e: any) { return c.json({ error: e.message }, 500); }
 });
 
-// 3. SERVERS & CATEGORIES ENDPOINT
 animekaiRouter.get("/episode/servers", async (c) => {
     const episodeData = decodeURIComponent(c.req.query("animeEpisodeId") || "");
-    try {
-        const res = await animekai.getEpisodeServers(episodeData);
-        return c.json({ data: res }, 200);
-    } catch (error: any) {
-        return c.json({ error: "Failed to fetch servers", details: error.message }, 500);
-    }
+    try { return c.json({ data: await animekai.getEpisodeServers(episodeData) }, 200); } 
+    catch (e: any) { return c.json({ error: e.message }, 500); }
 });
 
-// 4. SOURCES ENDPOINT
 animekaiRouter.get("/episode/sources", async (c) => {
-    const episodeId = decodeURIComponent(c.req.query("animeEpisodeId") || "");
-    const server = decodeURIComponent(c.req.query("server") || "vidstreaming");
-    const category = decodeURIComponent(c.req.query("category") || "sub");
-
-    try {
-        const res = await animekai.getEpisodeSources(episodeId, server, category);
-        
-        if (!res) return c.json({ error: "Sources not found" }, 404);
-
-        return c.json({ data: res }, 200);
-    } catch (error: any) {
-        console.error("AnimeKai Sources Error:", error);
-        return c.json({ error: "Failed to fetch sources", details: error.message }, 500);
-    }
-});
-
-// 5. DECRYPT CLIENT DATA ENDPOINT (Plan B Handoff)
-animekaiRouter.post("/episode/decrypt", async (c) => {
-    try {
-        const body = await c.req.json();
-        
-        if (!body.encryptedData) {
-            return c.json({ error: "Missing encryptedData" }, 400);
-        }
-
-        const res = await animekai.decryptClientData(body.encryptedData, body.intro, body.outro);
-        return c.json({ data: res }, 200);
-    } catch (error: any) {
-        console.error("AnimeKai Decrypt Error:", error);
-        return c.json({ error: "Failed to decrypt client data", details: error.message }, 500);
-    }
+    const episodeData = decodeURIComponent(c.req.query("animeEpisodeId") || "");
+    const server = decodeURIComponent(c.req.query("server") || "megaup");
+    const category = decodeURIComponent(c.req.query("category") || "softsub");
+    try { return c.json({ data: await animekai.getEpisodeSources(episodeData, server, category) }, 200); } 
+    catch (e: any) { return c.json({ error: e.message }, 500); }
 });
 
 export { animekaiRouter };
