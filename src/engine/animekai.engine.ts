@@ -335,7 +335,7 @@ export class AnimeKaiScraper {
                     headers: { "Referer": BASE_URL }
                 };
             } 
-            else if (videoUrl.includes("/iframe/")) {
+            else if (videoUrl.includes("animekai.la/iframe/")) {
                 // If it hits the Cloudflare iframe, fail immediately so the app can auto-switch to a working MegaUp server!
                 throw new Error("Cloudflare Iframe detected. Switch to 'SUB' or 'DUB' category.");
             }
