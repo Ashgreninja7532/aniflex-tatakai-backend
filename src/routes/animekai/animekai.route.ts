@@ -101,4 +101,38 @@ animekaiRouter.get("/episode/sources", async (c) => {
     catch (e: any) { return c.json({ error: e.message }, 500); }
 });
 
+animekaiRouter.get("/debug-iframe", async (c) => {
+    const iframeUrl = c.req.query("url");
+    if (!iframeUrl) return c.json({ error: "Provide a URL" }, 400);
+
+    try {
+        const response = await fetch(iframeUrl, {
+            method: "GET",
+            headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Referer": "https://animekai.la/",
+                "Connection": "keep-alive",
+                "Upgrade-Insecure-Requests": "1",
+                "Sec-Fetch-Dest": "iframe",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "same-origin"
+            }
+        });
+
+        const status = response.status;
+        const text = await response.text();
+
+        return c.json({
+            status: status,
+            isCloudflareBlock: text.includes("Just a moment") || text.includes("cloudflare"),
+            htmlSnippet: text.substring(0, 1000) // Print first 1000 chars to see what we got
+        });
+
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    }
+});
+
 export { animekaiRouter };
