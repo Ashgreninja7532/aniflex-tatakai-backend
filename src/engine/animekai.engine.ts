@@ -51,6 +51,10 @@ export class AnimeKaiScraper {
         return this._scrapeCardPage(`${BASE_URL}/browser?keyword=${encodeURIComponent(query.replace(/[\W_]+/g, "+"))}&page=${page}`);
     }
 
+     async filter(queryParams: string, page: number = 1) {
+        return this._scrapeCardPage(`${BASE_URL}/browser?${queryParams}&page=${page}`);
+    }
+
     async recentlyUpdated(page: number = 1) { return this._scrapeCardPage(`${BASE_URL}/updates?page=${page}`); }
     async newReleases(page: number = 1) { return this._scrapeCardPage(`${BASE_URL}/new-releases?page=${page}`); }
     async movies(page: number = 1) { return this._scrapeCardPage(`${BASE_URL}/movie?page=${page}`); }
