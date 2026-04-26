@@ -299,45 +299,30 @@ export class AnimeKaiScraper {
             const outro = { start: decoded.skip.outro[0], end: decoded.skip.outro[1] };
 
             // 5. MEGAUP EXTRACTION (TATAKAI API LOGIC)
-            const videoUrl = decoded.url;
+              const videoUrl = decoded.url;
             
             if (videoUrl.includes("/e/")) {
                 const megaUrl = videoUrl.replace("/e/", "/media/");
-                
-                // Fetch the media data from MegaUp
-                const { data: megaData } = await axios.get(megaUrl, { 
-                    headers: { "User-Agent": USER_AGENT, "Connection": "keep-alive" } 
-                });
-                
-                // Ensure we pass the correct text to the decryptor
+                const { data: megaData } = await axios.get(megaUrl, { headers: { "User-Agent": USER_AGENT, "Connection": "keep-alive" } });
                 const textToDec = typeof megaData === 'object' ? (megaData.result || JSON.stringify(megaData)) : megaData;
-
-                const res = await axios.post(`${ENC_API}/dec-mega`, { 
-                    text: textToDec, 
-                    agent: USER_AGENT 
-                });
-                
+                const res = await axios.post(`${ENC_API}/dec-mega`, { text: textToDec, agent: USER_AGENT });
                 const finalData = res.data.result;
 
                 return {
-                    sources: finalData.sources.map((s: any) => ({ 
-                        quality: s.file.includes("1080") ? "1080p" : "Auto", 
-                        url: s.file, 
-                        type: s.file.includes(".m3u8") || s.file.endsWith("m3u8") ? "hls" : "mp4" 
-                    })),
-                    tracks: finalData.tracks?.map((t: any) => ({ 
-                        file: t.file, 
-                        label: t.label, 
-                        kind: t.kind 
-                    })) || [],
-                    intro,
-                    outro,
-                    headers: { "Referer": BASE_URL }
+                    sources: finalData.sources.map((s: any) => ({ quality: s.file.includes("1080") ? "1080p" : "Auto", url: s.file, type: s.file.includes(".m3u8") || s.file.endsWith("m3u8") ? "hls" : "mp4" })),
+                    tracks: finalData.tracks?.map((t: any) => ({ file: t.file, label: t.label, kind: t.kind })) || [],
+                    intro, outro, headers: { "Referer": BASE_URL }
                 };
             } 
-            else if (videoUrl.includes("animekai.la/iframe/")) {
-                // If it hits the Cloudflare iframe, fail immediately so the app can auto-switch to a working MegaUp server!
-                throw new Error("Cloudflare Iframe detected. Switch to 'SUB' or 'DUB' category.");
+            else if (videoUrl.includes("/iframe/")) {
+                // 🛠️ FIX: Hand it off to the Flutter app to solve Cloudflare!
+                return {
+                    requiresClientFetch: true,
+                    iframeUrl: videoUrl,
+                    intro,
+                    outro,
+                    headers: { "Referer": "https://anikai.to/" }
+                };
             }
 
             throw new Error(`Unknown video host: ${videoUrl}`);
