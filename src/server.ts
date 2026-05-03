@@ -35,7 +35,7 @@ import { webhookRouter } from "./routes/webhooks/index.js";
 import pkgJson from "../package.json" with { type: "json" };
 import { anilistRouter } from "./routes/anilist/index.js";
 import { kaidoRouter } from "./routes/kaido/index.js"; 
-import { animepaheRouter } from './routes/animepahe/animepahe.route.js';
+import { animepaheRouter } from './routes/animepahe/index.js';
 import { animekaiRouter } from './routes/animekai/animekai.route.js';
 import { anikotoRouter } from "./routes/anikoto/index.js"; 
 
