@@ -10,7 +10,6 @@ const DDOS_GUARD_HEADERS = { Cookie: "__ddg1_=;__ddg2_=;" };
 const substringBefore = (str: string, pat: string) => str.indexOf(pat) === -1 ? str : str.substring(0, str.indexOf(pat));
 const substringAfter = (str: string, pat: string) => str.indexOf(pat) === -1 ? str : str.substring(str.indexOf(pat) + pat.length);
 const substringAfterLast = (str: string, pat: string) => str.split(pat).pop() ?? "";
-const getMapValue = (mapStr: string, key: string) => { try { const m = JSON.parse(mapStr); return m[key] != null ? String(m[key]) : ""; } catch { return ""; } };
 
 function decrypt(packedStr: string, key: string, offsetStr: string, delimiterIndex: number): string {
     const offset = parseInt(offsetStr, 10);
@@ -159,8 +158,74 @@ export class AnimepaheScraper {
         } catch { return []; }
     }
 
-private async extractDirect(kwikLink: string): Promise<string> {
-        // We must mimic a real browser embedding an iframe perfectly to bypass Kwik's real Cloudflare
+    // ---------------------------------------------------------
+    // STREAM EXTRACTION LOGIC
+    // ---------------------------------------------------------
+    async getSources(animeId: string, episodeSession: string) {
+        const sources = [];
+        const debugLogs: string[] = []; 
+
+        try {
+            debugLogs.push(`Fetching play page for Anime: ${animeId}, Session: ${episodeSession}`);
+            const res = await fetch(`${BASE_URL}/play/${animeId}/${episodeSession}`, { headers: this.headers });
+            const html = await res.text();
+            const $ = cheerio.load(html);
+            
+            const buttons = $("div#resolutionMenu > button").toArray();
+            const downloadLinks = $("div#pickDownload > a").toArray();
+
+            debugLogs.push(`Found ${buttons.length} resolution buttons and ${downloadLinks.length} download links`);
+
+            for (let i = 0; i < buttons.length; i++) {
+                const btn = $(buttons[i]);
+                const audio = btn.attr("data-audio") ?? "unknown";
+                const kwikLink = btn.attr("data-src") ?? "";
+                const quality = btn.attr("data-resolution") ?? "unknown";
+                const paheWinLink = $(downloadLinks[i]).attr("href") ?? "";
+
+                if (kwikLink) {
+                    let directUrl = "";
+                    debugLogs.push(`Processing ${quality}p (${audio}) - KwikLink: ${kwikLink}`);
+
+                    try {
+                        debugLogs.push(`Attempt 1: Direct JS Unpack for ${quality}p`);
+                        directUrl = await this.extractDirect(kwikLink);
+                    } catch (e: any) {
+                        debugLogs.push(`Direct unpack failed: ${e.message}`);
+                        
+                        if (paheWinLink) {
+                            try {
+                                debugLogs.push(`Attempt 2: HLS Decryption via ${paheWinLink}`);
+                                const originalRes = await fetch(kwikLink, { headers: this.headers });
+                                directUrl = await this.extractHls(paheWinLink, originalRes, debugLogs);
+                            } catch (hlsError: any) {
+                                debugLogs.push(`HLS decryption failed: ${hlsError.message}`);
+                            }
+                        } else {
+                            debugLogs.push(`No paheWinLink available for fallback on ${quality}p`);
+                        }
+                    }
+
+                    if (directUrl) {
+                        debugLogs.push(`✅ SUCCESS: Found direct URL for ${quality}p`);
+                        sources.push({
+                            quality,
+                            audio,
+                            url: directUrl,
+                            isM3U8: directUrl.includes(".m3u8"),
+                            originalKwik: kwikLink
+                        });
+                    }
+                }
+            }
+        } catch (err: any) {
+            debugLogs.push(`CRITICAL ERROR in getSources: ${err.message}`);
+        }
+        
+        return { sources, debugLogs };
+    }
+
+    private async extractDirect(kwikLink: string): Promise<string> {
         const kwikHeaders = {
             "User-Agent": USER_AGENT,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
@@ -192,20 +257,18 @@ private async extractDirect(kwikLink: string): Promise<string> {
     }
 
     private async extractHls(paheWinLink: string, originalRes: Response, debugLogs: string[]): Promise<string> {
-        // Fix the HTTP -> HTTPS trap! We replace http with https and let fetch follow all redirects automatically.
         const securePaheLink = paheWinLink.replace("http://", "https://");
-        
         debugLogs.push(`HLS Step 1: Fetching ${securePaheLink}/i with auto-redirect`);
         
         const kwikRes = await fetch(`${securePaheLink}/i`, {
-            redirect: "follow", // Automatically bypasses the fake "Cloudfare" page redirects!
+            redirect: "follow", 
             headers: { 
                 "Referer": BASE_URL + "/",
                 "User-Agent": USER_AGENT 
             },
         });
 
-        const kwikUrl = kwikRes.url; // This will give us the final https://kwik.cx/f/ URL
+        const kwikUrl = kwikRes.url; 
         debugLogs.push(`HLS Step 2: Landed on ${kwikUrl}`);
 
         if (!kwikUrl.includes("kwik.cx")) {
@@ -214,12 +277,10 @@ private async extractDirect(kwikLink: string): Promise<string> {
 
         const kwikBody = await kwikRes.text();
 
-        // 3. Extract the ciphered token
         const tokenRegex = /"(\S+)",\d+,"(\S+)",(\d+),(\d+)/;
         const matches = kwikBody.match(tokenRegex);
         if (!matches || matches.length < 5) throw new Error("Step 3 Failed: Could not find token regex. Kwik Cloudflare might be active here too.");
 
-        // 4. Decrypt Form
         const formHtml = decrypt(matches[1]!, matches[2]!, matches[3]!, parseInt(matches[4]!, 10));
         const actionUrl = formHtml.match(/action="([^"]+)"/)?.[1];
         const token = formHtml.match(/value="([^"]+)"/)?.[1];
@@ -227,12 +288,10 @@ private async extractDirect(kwikLink: string): Promise<string> {
         if (!actionUrl || !token) throw new Error("Step 4 Failed: Could not extract action URL/token from form.");
         debugLogs.push(`HLS Step 4: Decrypted form successfully. Target: ${actionUrl}`);
 
-        // 5. Build strict cookies
         let cookie = originalRes.headers.get("set-cookie") || originalRes.headers.get("Set-Cookie") || "";
         let setCookie = kwikRes.headers.get("set-cookie") || kwikRes.headers.get("Set-Cookie") || "";
         cookie += `; ${setCookie.replace("path=/;", "")}`;
 
-        // 6. The 419 Bypass Loop
         let statusCode = 419;
         let attempts = 0;
         let finalLocation = "";
