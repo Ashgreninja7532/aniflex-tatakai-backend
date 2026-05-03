@@ -258,28 +258,64 @@ export class AnimepaheScraper {
 
     private async extractHls(paheWinLink: string, originalRes: Response, debugLogs: string[]): Promise<string> {
         const securePaheLink = paheWinLink.replace("http://", "https://");
-        debugLogs.push(`HLS Step 1: Fetching ${securePaheLink}/i with auto-redirect`);
+        debugLogs.push(`HLS Step 1: Fetching intermediate page ${securePaheLink}`);
         
-        const kwikRes = await fetch(`${securePaheLink}/i`, {
-            redirect: "follow", 
-            headers: { 
-                "Referer": BASE_URL + "/",
-                "User-Agent": USER_AGENT 
-            },
-        });
+        let kwikUrl = "";
+        
+        try {
+            // 1. Fetch the pahe.win page directly
+            const paheRes = await fetch(securePaheLink, {
+                headers: { "Referer": BASE_URL + "/", "User-Agent": USER_AGENT }
+            });
+            const paheHtml = await paheRes.text();
 
-        const kwikUrl = kwikRes.url; 
-        debugLogs.push(`HLS Step 2: Landed on ${kwikUrl}`);
-
-        if (!kwikUrl.includes("kwik.cx")) {
-            throw new Error(`Step 2 Failed: Did not land on Kwik. Landed on ${kwikUrl}`);
+            // 2. Extract kwik.cx link directly from the HTML using Regex
+            // This catches hidden links inside buttons or scripts without needing to run JS!
+            const urlRegex = /(https:\/\/kwik\.cx\/(?:f|e|d)\/[a-zA-Z0-9_-]+)/;
+            const match = paheHtml.match(urlRegex);
+            
+            if (match) {
+                kwikUrl = match[1];
+                debugLogs.push(`HLS Step 2: Extracted Kwik URL via Regex -> ${kwikUrl}`);
+            } else {
+                // Fallback just in case
+                debugLogs.push(`HLS Step 2 (Fallback): Regex failed. Trying /i endpoint.`);
+                const iRes = await fetch(`${securePaheLink}/i`, {
+                    redirect: "manual",
+                    headers: { "Referer": BASE_URL + "/" }
+                });
+                kwikUrl = iRes.headers.get("location") || iRes.headers.get("Location") || "";
+            }
+        } catch (e: any) {
+            throw new Error(`Failed to extract Kwik link: ${e.message}`);
         }
 
+        if (!kwikUrl || !kwikUrl.includes("kwik.cx")) {
+            throw new Error(`Step 2 Failed: Could not resolve a valid Kwik link.`);
+        }
+
+        // 3. Fetch the actual Kwik bypass page
+        debugLogs.push(`HLS Step 3: Fetching Kwik bypass page...`);
+        const kwikRes = await fetch(kwikUrl, { 
+            headers: { 
+                "Referer": "https://animepahe.pw/", 
+                "User-Agent": USER_AGENT,
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9"
+            } 
+        });
         const kwikBody = await kwikRes.text();
+
+        // 🚨 CLOUDFLARE TURNSTILE CHECK 🚨
+        if (kwikBody.includes("Cloudflare") || kwikBody.includes("Just a moment...")) {
+            throw new Error("Step 3 Failed: Kwik threw a REAL Cloudflare Turnstile block. Backend fetch cannot pass this.");
+        }
 
         const tokenRegex = /"(\S+)",\d+,"(\S+)",(\d+),(\d+)/;
         const matches = kwikBody.match(tokenRegex);
-        if (!matches || matches.length < 5) throw new Error("Step 3 Failed: Could not find token regex. Kwik Cloudflare might be active here too.");
+        if (!matches || matches.length < 5) {
+            throw new Error("Step 3 Failed: Could not find token regex. Kwik page format changed.");
+        }
 
         const formHtml = decrypt(matches[1]!, matches[2]!, matches[3]!, parseInt(matches[4]!, 10));
         const actionUrl = formHtml.match(/action="([^"]+)"/)?.[1];
