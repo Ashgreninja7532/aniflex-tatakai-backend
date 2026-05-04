@@ -4,67 +4,6 @@ const BASE_URL = "https://animepahe.pw";
 const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 const DDOS_GUARD_HEADERS = { Cookie: "__ddg1_=;__ddg2_=;" };
 
-// ==========================================
-// UTILITIES & UNPACKERS
-// ==========================================
-const substringBefore = (str: string, pat: string) => str.indexOf(pat) === -1 ? str : str.substring(0, str.indexOf(pat));
-const substringAfter = (str: string, pat: string) => str.indexOf(pat) === -1 ? str : str.substring(str.indexOf(pat) + pat.length);
-const substringAfterLast = (str: string, pat: string) => str.split(pat).pop() ?? "";
-
-function decrypt(packedStr: string, key: string, offsetStr: string, delimiterIndex: number): string {
-    const offset = parseInt(offsetStr, 10);
-    const delimiter = key[delimiterIndex];
-    const radix = delimiterIndex;
-    let html = "", i = 0;
-
-    while (i < packedStr.length) {
-        let chunk = "";
-        while (i < packedStr.length && packedStr[i] !== delimiter) { chunk += packedStr[i]; i++; }
-        let chunkWithDigits = chunk;
-        for (let j = 0; j < key.length; j++) chunkWithDigits = chunkWithDigits.replaceAll(key[j]!, j.toString());
-        html += String.fromCharCode(parseInt(chunkWithDigits, radix) - offset);
-        i++;
-    }
-    return html;
-}
-
-class UnBase {
-    private readonly dictionary: Record<string, number> = {};
-    private alphabet = "";
-    constructor(private radix: number) {
-        const alpha62 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-        const alpha95 = ' !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~';
-        if (radix > 36) {
-            if (radix <= 62) this.alphabet = alpha62.substring(0, radix);
-            else if (radix <= 95) this.alphabet = alpha95.substring(0, radix);
-            for (let i = 0; i < this.alphabet.length; i++) this.dictionary[this.alphabet.charAt(i)] = i;
-        }
-    }
-    unBase(str: string): number {
-        if (!this.alphabet) return parseInt(str, this.radix);
-        return str.split('').reverse().reduce((acc, char, i) => acc + Math.pow(this.radix, i) * (this.dictionary[char] || 0), 0);
-    }
-}
-
-function unpackJsAndCombine(packedJS: string): string {
-    const exp = /\}\s*\('(.*)',\s*(.*?),\s*(\d+),\s*'(.*?)'\.split\('\|'\)/s;
-    const matches = exp.exec(packedJS);
-    if (!matches) throw new Error("Not a valid p.a.c.k.e.r payload");
-
-    let payload = matches[1]!.replace(/\\'/g, "'");
-    const radix = parseInt(matches[2]!, 10) || 36;
-    const symArray = matches[4]!.split("|");
-    const unBase = new UnBase(radix);
-
-    return payload.replace(/\b\w+\b/g, (word) => {
-        const index = unBase.unBase(word);
-        return (index < symArray.length && symArray[index]) ? symArray[index] : word;
-    });
-}
-
-// ==========================================
-// CORE SCRAPER ENGINE
-// ==========================================
 export class AnimepaheScraper {
     private headers = { ...DDOS_GUARD_HEADERS };
 
@@ -159,204 +98,38 @@ export class AnimepaheScraper {
     }
 
     // ---------------------------------------------------------
-    // STREAM EXTRACTION LOGIC
+    // CLIENT-SIDE DELEGATION FOR SOURCES
     // ---------------------------------------------------------
     async getSources(animeId: string, episodeSession: string) {
         const sources = [];
-        const debugLogs: string[] = []; 
 
         try {
-            debugLogs.push(`Fetching play page for Anime: ${animeId}, Session: ${episodeSession}`);
             const res = await fetch(`${BASE_URL}/play/${animeId}/${episodeSession}`, { headers: this.headers });
             const html = await res.text();
             const $ = cheerio.load(html);
             
             const buttons = $("div#resolutionMenu > button").toArray();
-            const downloadLinks = $("div#pickDownload > a").toArray();
-
-            debugLogs.push(`Found ${buttons.length} resolution buttons and ${downloadLinks.length} download links`);
 
             for (let i = 0; i < buttons.length; i++) {
                 const btn = $(buttons[i]);
                 const audio = btn.attr("data-audio") ?? "unknown";
                 const kwikLink = btn.attr("data-src") ?? "";
                 const quality = btn.attr("data-resolution") ?? "unknown";
-                const paheWinLink = $(downloadLinks[i]).attr("href") ?? "";
 
                 if (kwikLink) {
-                    let directUrl = "";
-                    debugLogs.push(`Processing ${quality}p (${audio}) - KwikLink: ${kwikLink}`);
-
-                    try {
-                        debugLogs.push(`Attempt 1: Direct JS Unpack for ${quality}p`);
-                        directUrl = await this.extractDirect(kwikLink);
-                    } catch (e: any) {
-                        debugLogs.push(`Direct unpack failed: ${e.message}`);
-                        
-                        if (paheWinLink) {
-                            try {
-                                debugLogs.push(`Attempt 2: HLS Decryption via ${paheWinLink}`);
-                                const originalRes = await fetch(kwikLink, { headers: this.headers });
-                                directUrl = await this.extractHls(paheWinLink, originalRes, debugLogs);
-                            } catch (hlsError: any) {
-                                debugLogs.push(`HLS decryption failed: ${hlsError.message}`);
-                            }
-                        } else {
-                            debugLogs.push(`No paheWinLink available for fallback on ${quality}p`);
-                        }
-                    }
-
-                    if (directUrl) {
-                        debugLogs.push(`✅ SUCCESS: Found direct URL for ${quality}p`);
-                        sources.push({
-                            quality,
-                            audio,
-                            url: directUrl,
-                            isM3U8: directUrl.includes(".m3u8"),
-                            originalKwik: kwikLink
-                        });
-                    }
+                    sources.push({
+                        quality,
+                        audio,
+                        // We return the Embed URL to the App directly.
+                        url: kwikLink,
+                        isM3U8: false, // Flag to tell frontend it needs to render the Kwik embed
+                    });
                 }
             }
         } catch (err: any) {
-            debugLogs.push(`CRITICAL ERROR in getSources: ${err.message}`);
+            console.error("Failed to fetch resolutions:", err);
         }
         
-        return { sources, debugLogs };
-    }
-
-    private async extractDirect(kwikLink: string): Promise<string> {
-        const kwikHeaders = {
-            "User-Agent": USER_AGENT,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Referer": BASE_URL + "/",
-            "Sec-Fetch-Dest": "iframe",
-            "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-Site": "cross-site",
-        };
-
-        const res = await fetch(kwikLink, { headers: kwikHeaders });
-        const body = await res.text();
-        const $ = cheerio.load(body);
-
-        let packedScript = "";
-        $("script").each((_, el) => {
-            const content = $(el).html() ?? "";
-            if (content.includes("eval(function")) packedScript = content;
-        });
-
-        if (!packedScript) throw new Error("No eval(function packed script found. Cloudflare Turnstile likely blocked the backend.");
-
-        const scriptPart = substringAfterLast(packedScript, "eval(function(");
-        const unpacked = unpackJsAndCombine("eval(function(" + scriptPart);
-        const videoUrl = substringBefore(substringAfter(unpacked, "const source='"), "';");
-
-        if (!videoUrl || !videoUrl.startsWith("http")) throw new Error("Extracted source URL is invalid.");
-        return videoUrl;
-    }
-
-    private async extractHls(paheWinLink: string, originalRes: Response, debugLogs: string[]): Promise<string> {
-        const securePaheLink = paheWinLink.replace("http://", "https://");
-        debugLogs.push(`HLS Step 1: Fetching intermediate page ${securePaheLink}`);
-        
-        let kwikUrl = "";
-        
-        try {
-            // 1. Fetch the pahe.win page directly
-            const paheRes = await fetch(securePaheLink, {
-                headers: { "Referer": BASE_URL + "/", "User-Agent": USER_AGENT }
-            });
-            const paheHtml = await paheRes.text();
-
-            // 2. Extract kwik.cx link directly from the HTML using Regex
-            // This catches hidden links inside buttons or scripts without needing to run JS!
-            const urlRegex = /(https:\/\/kwik\.cx\/(?:f|e|d)\/[a-zA-Z0-9_-]+)/;
-            const match = paheHtml.match(urlRegex);
-            
-            if (match) {
-                kwikUrl = match[1];
-                debugLogs.push(`HLS Step 2: Extracted Kwik URL via Regex -> ${kwikUrl}`);
-            } else {
-                // Fallback just in case
-                debugLogs.push(`HLS Step 2 (Fallback): Regex failed. Trying /i endpoint.`);
-                const iRes = await fetch(`${securePaheLink}/i`, {
-                    redirect: "manual",
-                    headers: { "Referer": BASE_URL + "/" }
-                });
-                kwikUrl = iRes.headers.get("location") || iRes.headers.get("Location") || "";
-            }
-        } catch (e: any) {
-            throw new Error(`Failed to extract Kwik link: ${e.message}`);
-        }
-
-        if (!kwikUrl || !kwikUrl.includes("kwik.cx")) {
-            throw new Error(`Step 2 Failed: Could not resolve a valid Kwik link.`);
-        }
-
-        // 3. Fetch the actual Kwik bypass page
-        debugLogs.push(`HLS Step 3: Fetching Kwik bypass page...`);
-        const kwikRes = await fetch(kwikUrl, { 
-            headers: { 
-                "Referer": "https://animepahe.pw/", 
-                "User-Agent": USER_AGENT,
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.9"
-            } 
-        });
-        const kwikBody = await kwikRes.text();
-
-        // 🚨 CLOUDFLARE TURNSTILE CHECK 🚨
-        if (kwikBody.includes("Cloudflare") || kwikBody.includes("Just a moment...")) {
-            throw new Error("Step 3 Failed: Kwik threw a REAL Cloudflare Turnstile block. Backend fetch cannot pass this.");
-        }
-
-        const tokenRegex = /"(\S+)",\d+,"(\S+)",(\d+),(\d+)/;
-        const matches = kwikBody.match(tokenRegex);
-        if (!matches || matches.length < 5) {
-            throw new Error("Step 3 Failed: Could not find token regex. Kwik page format changed.");
-        }
-
-        const formHtml = decrypt(matches[1]!, matches[2]!, matches[3]!, parseInt(matches[4]!, 10));
-        const actionUrl = formHtml.match(/action="([^"]+)"/)?.[1];
-        const token = formHtml.match(/value="([^"]+)"/)?.[1];
-
-        if (!actionUrl || !token) throw new Error("Step 4 Failed: Could not extract action URL/token from form.");
-        debugLogs.push(`HLS Step 4: Decrypted form successfully. Target: ${actionUrl}`);
-
-        let cookie = originalRes.headers.get("set-cookie") || originalRes.headers.get("Set-Cookie") || "";
-        let setCookie = kwikRes.headers.get("set-cookie") || kwikRes.headers.get("Set-Cookie") || "";
-        cookie += `; ${setCookie.replace("path=/;", "")}`;
-
-        let statusCode = 419;
-        let attempts = 0;
-        let finalLocation = "";
-
-        while (statusCode !== 302 && attempts < 20) {
-            const postRes = await fetch(actionUrl, {
-                method: "POST",
-                redirect: "manual",
-                headers: {
-                    "Referer": kwikUrl,
-                    "Cookie": cookie,
-                    "User-Agent": USER_AGENT,
-                    "Content-Type": "application/x-www-form-urlencoded",
-                },
-                body: new URLSearchParams({ _token: token }).toString(),
-            });
-
-            statusCode = postRes.status;
-            attempts++;
-            
-            if (statusCode === 302 || statusCode === 301) {
-                finalLocation = postRes.headers.get("location") || postRes.headers.get("Location") || "";
-                debugLogs.push(`HLS Step 6: Success on attempt ${attempts}! Found Location.`);
-                break;
-            }
-            await new Promise((resolve) => setTimeout(resolve, 500));
-        }
-
-        if (!finalLocation) throw new Error(`Step 6 Failed: Exhausted 20 attempts without a redirect.`);
-        return finalLocation;
+        return { sources };
     }
 }
