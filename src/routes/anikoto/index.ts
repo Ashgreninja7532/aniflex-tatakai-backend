@@ -83,7 +83,7 @@ anikotoRouter.get("/episode/servers", async (c) => {
     }
 });
 
-// 6. SOURCES (Backend Decryption)
+// 6. SOURCES (Backend Decryption Delegated to App)
 anikotoRouter.get("/episode/sources", async (c) => {
     const episodeId = decodeURIComponent(c.req.query("animeEpisodeId") || "");
     const server = decodeURIComponent(c.req.query("server") || "hd-1");
@@ -91,19 +91,10 @@ anikotoRouter.get("/episode/sources", async (c) => {
 
     try {
         const res = await anikoto.getEpisodeSources(episodeId, server, category);
-        const formattedTracks = res.tracks?.map((sub: any) => ({
-            file: sub.url, url: sub.url, label: sub.lang, kind: "captions"
-        })) || [];
-
-        return c.json({
-            data: {
-                sources: res.sources,
-                tracks: formattedTracks,
-                intro: res.intro,
-                outro: res.outro,
-                headers: res.headers
-            }
-        }, 200);
+        
+        // Return the payload back to Flutter exactly as it is!
+        return c.json({ data: res }, 200);
+        
     } catch (error: any) {
         return c.json({ error: "Failed to fetch sources", exact_reason: error.message }, 500);
     }
