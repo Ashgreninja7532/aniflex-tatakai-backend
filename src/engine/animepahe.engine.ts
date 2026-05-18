@@ -1,5 +1,4 @@
 import * as cheerio from "cheerio";
-import stringSimilarity from "string-similarity";
 
 const BASE_URL = "https://animepahe.pw";
 const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -66,7 +65,7 @@ function unpackJsAndCombine(packedJS: string): string {
 export class AnimepaheScraper {
     private headers = { ...DDOS_GUARD_HEADERS };
 
-    async search(query: string) {
+async search(query: string) {
         try {
             const res = await fetch(`${BASE_URL}/api?m=search&l=8&q=${encodeURIComponent(query)}`, { headers: this.headers });
             const json: any = await res.json();
@@ -77,6 +76,7 @@ export class AnimepaheScraper {
                 episodes: item.episodes,
                 status: item.status,
                 year: item.year,
+                season: item.season, // 🛠️ GRAB SEASON FROM ANIMEPAHE API
                 score: item.score,
                 poster: item.poster.startsWith("http") ? item.poster : `https://i.animepahe.si/posters/${item.poster}`,
                 session: item.session,
@@ -141,44 +141,6 @@ export class AnimepaheScraper {
         } catch { return null; }
     }
 
-    // 🚀 DYNAMIC MATCHER
-    async findMapping(anilistId: number, titles: string[], year: number) {
-        try {
-            let searchResults: any[] = [];
-            for (const title of titles) {
-                if (!title) continue;
-                const results = await this.search(title);
-                searchResults.push(...results);
-            }
-
-            searchResults = searchResults.filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i);
-
-            if (year > 0) {
-                const yearFiltered = searchResults.filter(r => r.year === year);
-                if (yearFiltered.length > 0) searchResults = yearFiltered; 
-            }
-
-            const primaryTitle = titles[0] || "";
-            searchResults.sort((a, b) => {
-                const simA = stringSimilarity.compareTwoStrings(primaryTitle.toLowerCase(), a.title.toLowerCase());
-                const simB = stringSimilarity.compareTwoStrings(primaryTitle.toLowerCase(), b.title.toLowerCase());
-                return simB - simA; 
-            });
-
-            const topResults = searchResults.slice(0, 3);
-
-            for (const result of topResults) {
-                const info = await this.getAnimeInfo(result.id);
-                if (info && info.anilistId === anilistId) {
-                    return result.id; // PERFECT MATCH FOUND
-                }
-            }
-            return null; 
-        } catch (e) {
-            console.error("Mapping error:", e);
-            return null;
-        }
-    }
 
     async getEpisodes(id: string) {
         try {
