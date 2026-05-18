@@ -33,7 +33,7 @@ query ($id: Int, $page: Int, $perPage: Int, $search: String) {
 const INFO_QUERY = `
 query ($id: Int) {
   Media(id: $id, type: ANIME, isAdult: false) {
-    id title { romaji english native } coverImage { extraLarge } bannerImage description episodes status averageScore genres seasonYear format
+    id title { romaji english native } coverImage { extraLarge } bannerImage description episodes status averageScore genres seasonYear season format
     startDate { year month day } endDate { year month day }
     studios { edges { node { name isAnimationStudio } } }
     characters(sort: ROLE) {
@@ -68,7 +68,7 @@ query (
       status: $status, season: $season, countryOfOrigin: $countryOfOrigin,
       isAdult: false 
     ) {
-      id title { romaji english native } coverImage { extraLarge } format status episodes seasonYear averageScore genres
+      id title { romaji english native } coverImage { extraLarge } bannerImage format status episodes seasonYear averageScore genres
     }
   }
 }`;
